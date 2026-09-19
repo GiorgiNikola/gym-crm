@@ -1,0 +1,6 @@
+userID,firstName,lastName,username,password,isActive,dateOfBirth,address
+1,John,Smith,John.Smith,aX7kQ2mN9p,true,1998-05-14,123 Main St New York
+2,Emily,Johnson,Emily.Johnson,Zt4rW8pL2q,true,2000-11-02,45 Oak Avenue Boston
+3,Michael,Brown,Michael.Brown,Bn6yU3dF7s,false,1995-03-27,
+4,Ana,Kapanadze,Ana.Kapanadze,Qw8eR5tY1u,true,1999-07-19,78 Rustaveli Ave Tbilisi
+5,David,Wilson,David.Wilson,Lp3oI9uH6j,true,,12 Birch Lane Chicago

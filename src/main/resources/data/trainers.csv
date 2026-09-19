@@ -1,0 +1,6 @@
+userID,firstName,lastName,username,password,isActive,specialization
+1,Robert,Taylor,Robert.Taylor,Hj2wE8rT4y,true,FITNESS
+2,Sarah,Miller,Sarah.Miller,Vb5nM1qA9z,true,YOGA
+3,Giorgi,Beridze,Giorgi.Beridze,Cx7fG3hJ6k,true,ZUMBA
+4,Laura,Davis,Laura.Davis,Rt9yU2iO5p,false,STRETCHING
+5,James,Anderson,James.Anderson,Nm4bV7cX1s,true,RESISTANCE
