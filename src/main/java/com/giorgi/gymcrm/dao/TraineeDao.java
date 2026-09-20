@@ -10,4 +10,7 @@ public interface TraineeDao {
     void delete(long id);
     Trainee findById(long id);
     List<Trainee> findAll();
+    boolean existsByUsername(String username);
+    boolean existsByID(long id);
+    long generateId();
 }

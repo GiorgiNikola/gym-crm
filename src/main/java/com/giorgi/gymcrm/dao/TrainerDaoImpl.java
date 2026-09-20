@@ -1,6 +1,5 @@
 package com.giorgi.gymcrm.dao;
 
-import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,7 +25,7 @@ public class TrainerDaoImpl implements TrainerDao {
             throw new IllegalArgumentException("Trainer with id: " + trainer.getUserID() +" already exists");
         }
         trainers.put(trainer.getUserID(), trainer);
-        return trainer;
+        return trainer.toBuilder().build();
     }
 
     @Override
@@ -34,7 +33,7 @@ public class TrainerDaoImpl implements TrainerDao {
         Trainer existingTrainer = trainers.get(trainer.getUserID());
         if (existingTrainer != null) {
             trainers.put(trainer.getUserID(), trainer);
-            return trainer;
+            return trainer.toBuilder().build();
         } else {
             log.error("Trainer with id: {} does not exist", trainer.getUserID());
             throw new IllegalArgumentException("Trainer with id: " + trainer.getUserID() +" does not exist");
@@ -43,11 +42,38 @@ public class TrainerDaoImpl implements TrainerDao {
 
     @Override
     public Trainer findById(long id) {
-        return trainers.get(id);
+        Trainer trainer = trainers.get(id);
+        return trainer != null ? trainer.toBuilder().build() : null;
     }
 
     @Override
     public List<Trainer> findAll() {
-        return trainers.values().stream().toList();
+        return trainers.values()
+                .stream()
+                .map(this::copyOf)
+                .toList();
+    }
+
+    @Override
+    public boolean existsByUsername(String username) {
+        return trainers.values().stream()
+                .anyMatch(t -> t.getUsername().equals(username));
+    }
+
+    @Override
+    public boolean existsByID(long id) {
+        return trainers.get(id) != null;
+    }
+
+    @Override
+    public long generateId() {
+        return trainers.keySet()
+                .stream()
+                .max(Long::compareTo)
+                .orElse(0L) + 1;
+    }
+
+    private Trainer copyOf(Trainer trainer) {
+        return trainer.toBuilder().build();
     }
 }

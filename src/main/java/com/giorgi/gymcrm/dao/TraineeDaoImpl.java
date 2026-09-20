@@ -25,7 +25,7 @@ public class TraineeDaoImpl implements TraineeDao {
             throw new IllegalArgumentException("Trainee with id: " + trainee.getUserID() +" already exists");
         }
         trainees.put(trainee.getUserID(), trainee);
-        return trainee;
+        return trainee.toBuilder().build();
     }
 
     @Override
@@ -33,7 +33,7 @@ public class TraineeDaoImpl implements TraineeDao {
         Trainee existingTrainee = trainees.get(trainee.getUserID());
         if (existingTrainee != null) {
             trainees.put(trainee.getUserID(), trainee);
-            return trainee;
+            return trainee.toBuilder().build();
         } else {
             log.error("Trainee with id: {} does not exist", trainee.getUserID());
             throw new IllegalArgumentException("Trainee with id: " + trainee.getUserID() +" does not exist");
@@ -47,11 +47,39 @@ public class TraineeDaoImpl implements TraineeDao {
 
     @Override
     public Trainee findById(long id) {
-        return trainees.get(id);
+        Trainee trainee = trainees.get(id);
+        return trainee != null ? trainee.toBuilder().build() : null;
     }
 
     @Override
     public List<Trainee> findAll() {
-        return trainees.values().stream().toList();
+        return trainees.values()
+                .stream()
+                .map(this::copyOf)
+                .toList();
+    }
+
+    @Override
+    public boolean existsByUsername(String username) {
+        return trainees.values()
+                .stream()
+                .anyMatch(t -> t.getUsername().equals(username));
+    }
+
+    @Override
+    public boolean existsByID(long id) {
+        return trainees.get(id) != null;
+    }
+
+    @Override
+    public long generateId() {
+        return trainees.keySet()
+                .stream()
+                .max(Long::compareTo)
+                .orElse(0L) + 1;
+    }
+
+    private Trainee copyOf(Trainee trainee) {
+        return trainee.toBuilder().build();
     }
 }

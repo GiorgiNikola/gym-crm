@@ -9,4 +9,7 @@ public interface TrainerDao {
     Trainer update(Trainer trainer);
     Trainer findById(long id);
     List<Trainer> findAll();
+    boolean existsByUsername(String username);
+    boolean existsByID(long id);
+    long generateId();
 }
