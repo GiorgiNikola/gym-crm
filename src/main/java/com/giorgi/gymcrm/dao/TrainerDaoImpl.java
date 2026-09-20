@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @Component
@@ -24,16 +25,16 @@ public class TrainerDaoImpl implements TrainerDao {
             log.error("Trainer with id: {} already exists", trainer.getUserID());
             throw new IllegalArgumentException("Trainer with id: " + trainer.getUserID() +" already exists");
         }
-        trainers.put(trainer.getUserID(), trainer);
-        return trainer.toBuilder().build();
+        trainers.put(trainer.getUserID(), copyOf(trainer));
+        return copyOf(trainer);
     }
 
     @Override
     public Trainer update(Trainer trainer) {
         Trainer existingTrainer = trainers.get(trainer.getUserID());
         if (existingTrainer != null) {
-            trainers.put(trainer.getUserID(), trainer);
-            return trainer.toBuilder().build();
+            trainers.put(trainer.getUserID(), copyOf(trainer));
+            return copyOf(trainer);
         } else {
             log.error("Trainer with id: {} does not exist", trainer.getUserID());
             throw new IllegalArgumentException("Trainer with id: " + trainer.getUserID() +" does not exist");
@@ -43,7 +44,7 @@ public class TrainerDaoImpl implements TrainerDao {
     @Override
     public Trainer findById(long id) {
         Trainer trainer = trainers.get(id);
-        return trainer != null ? trainer.toBuilder().build() : null;
+        return trainer != null ? copyOf(trainer) : null;
     }
 
     @Override
@@ -57,7 +58,7 @@ public class TrainerDaoImpl implements TrainerDao {
     @Override
     public boolean existsByUsername(String username) {
         return trainers.values().stream()
-                .anyMatch(t -> t.getUsername().equals(username));
+                .anyMatch(t -> Objects.equals(t.getUsername(), username));
     }
 
     @Override

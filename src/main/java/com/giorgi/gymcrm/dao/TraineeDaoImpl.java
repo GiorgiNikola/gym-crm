@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @Component
@@ -24,16 +25,16 @@ public class TraineeDaoImpl implements TraineeDao {
             log.error("Trainee with id: {} already exists", trainee.getUserID());
             throw new IllegalArgumentException("Trainee with id: " + trainee.getUserID() +" already exists");
         }
-        trainees.put(trainee.getUserID(), trainee);
-        return trainee.toBuilder().build();
+        trainees.put(trainee.getUserID(), copyOf(trainee));
+        return copyOf(trainee);
     }
 
     @Override
     public Trainee update(Trainee trainee) {
         Trainee existingTrainee = trainees.get(trainee.getUserID());
         if (existingTrainee != null) {
-            trainees.put(trainee.getUserID(), trainee);
-            return trainee.toBuilder().build();
+            trainees.put(trainee.getUserID(), copyOf(trainee));
+            return copyOf(trainee);
         } else {
             log.error("Trainee with id: {} does not exist", trainee.getUserID());
             throw new IllegalArgumentException("Trainee with id: " + trainee.getUserID() +" does not exist");
@@ -42,13 +43,15 @@ public class TraineeDaoImpl implements TraineeDao {
 
     @Override
     public void delete(long id) {
-        trainees.remove(id);
+        if (trainees.remove(id) == null) {
+            log.warn("Trainee with id: {} was not found, nothing to delete", id);
+        }
     }
 
     @Override
     public Trainee findById(long id) {
         Trainee trainee = trainees.get(id);
-        return trainee != null ? trainee.toBuilder().build() : null;
+        return trainee != null ? copyOf(trainee) : null;
     }
 
     @Override
@@ -63,7 +66,7 @@ public class TraineeDaoImpl implements TraineeDao {
     public boolean existsByUsername(String username) {
         return trainees.values()
                 .stream()
-                .anyMatch(t -> t.getUsername().equals(username));
+                .anyMatch(t -> Objects.equals(t.getUsername(), username));
     }
 
     @Override

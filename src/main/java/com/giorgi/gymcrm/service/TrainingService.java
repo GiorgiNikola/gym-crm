@@ -57,6 +57,11 @@ public class TrainingService {
             throw new IllegalArgumentException("Training name should not be null");
         }
 
+        if (name.isBlank()) {
+            log.error("Training name is blank");
+            throw new IllegalArgumentException("Training name should not be blank");
+        }
+
         if (type == null) {
             log.error("Training type is null");
             throw new IllegalArgumentException("Training type should not be null");

@@ -1,6 +1,5 @@
 package com.giorgi.gymcrm.dao;
 
-import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Training;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,14 +22,14 @@ public class TrainingDaoImpl implements TrainingDao {
             log.error("Training with id: {} already exists", training.getID());
             throw new IllegalArgumentException("Training with id: " + training.getID() +" already exists");
         }
-        trainings.put(training.getID(), training);
-        return training.toBuilder().build();
+        trainings.put(training.getID(), copyOf(training));
+        return copyOf(training);
     }
 
     @Override
     public Training findById(long id) {
         Training training = trainings.get(id);
-        return training != null ? training.toBuilder().build() : null;
+        return training != null ? copyOf(training) : null;
     }
 
     @Override
@@ -39,5 +38,9 @@ public class TrainingDaoImpl implements TrainingDao {
                 .stream()
                 .max(Long::compareTo)
                 .orElse(0L) + 1;
+    }
+
+    private Training copyOf(Training training) {
+        return training.toBuilder().build();
     }
 }
