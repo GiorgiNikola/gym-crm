@@ -1,0 +1,116 @@
+# Gym CRM
+
+Spring Core module of the Gym CRM. Everything lives in memory, there's no web layer and no database.
+
+## Stack
+
+Java 21, Spring Boot 4.1.1 (Spring Core only, no web starter), Lombok 1.18.46, JUnit Jupiter 6.0.3, Mockito 5.23.0, JaCoCo 0.8.13.
+
+## Getting it running
+
+Clone it:
+
+```bash
+git clone https://github.com/GiorgiNikola/gym-crm.git
+cd gym-crm
+```
+
+You need Java 21 and Maven, or just use the wrapper that's already in the repo.
+
+```bash
+./mvnw clean package
+```
+
+Run the tests:
+
+```bash
+./mvnw clean test
+```
+
+JaCoCo is bound to the `test` phase, so that same command writes the coverage report. Open `target/site/jacoco/index.html` to read it.
+
+You can start the app too:
+
+```bash
+./mvnw spring-boot:run
+```
+
+Be aware there's nothing to talk to. It boots the Spring context, `StorageInitializer` fills the three storage maps from the CSV files, and then the process exits because there's no web server or anything else keeping it alive. The seeding is silent, nothing gets logged about it. If you want to actually exercise the thing, use the test suite or wire `GymCrmFacade` into your own code and call it.
+
+## How it's wired
+
+Configuration is annotation based. `StorageConfig` is a `@Configuration` class, and everything else is picked up by component scanning through `@Component` and `@Service`.
+
+Each storage map is its own bean. `StorageConfig` declares three separate `@Bean` methods, `traineeStorage()`, `trainerStorage()` and `trainingStorage()`, each returning a plain `HashMap`. They're distinct beans rather than one shared structure, so each entity type can be listed on its own.
+
+Injection is setter based almost everywhere. The storage maps go into the DAOs through setters, the DAOs go into the services through setters, and `UsernameResolver` and `StorageInitializer` take their collaborators the same way. The one exception is `GymCrmFacade`, which gets the three services through its constructor. That split is what the task asks for, it isn't a style preference.
+
+The CSV paths come from `storage.properties`, which `StorageConfig` pulls in with `@PropertySource("classpath:storage.properties")`. The three properties are `trainee.file.path`, `trainer.file.path` and `training.file.path`, and `StorageInitializer` reads them into fields with `@Value`. They're `classpath:` locations, resolved through Spring's `ResourceLoader`.
+
+## Seed data
+
+The files live in `src/main/resources/data`, one per entity.
+
+`trainees.csv` has `userID,firstName,lastName,username,password,isActive,dateOfBirth,address`. Date of birth and address are optional, a row can leave either column empty.
+
+`trainers.csv` has `userID,firstName,lastName,username,password,isActive,specialization`, where specialization is one of `FITNESS`, `YOGA`, `ZUMBA`, `STRETCHING`, `RESISTANCE`.
+
+`trainings.csv` has `id,traineeID,trainerID,name,type,date,duration`.
+
+`StorageInitializer` is a `BeanPostProcessor`. It checks the bean name in `postProcessAfterInitialization`, and when it sees `traineeStorage`, `trainerStorage` or `trainingStorage` it parses the matching file and fills that map before handing the bean back. The first line of each file is treated as a header and skipped.
+
+## Facade
+
+`GymCrmFacade` is the only entry point, it just forwards to the three services.
+
+```
+Trainee  createTraineeProfile(firstname, lastname, isActive, dateOfBirth, address)   generates id, username, password
+Trainee  updateTraineeProfile(trainee)                                               rejects null
+void     deleteTraineeProfile(id)                                                    does nothing if the id is unknown
+Trainee  selectTraineeProfile(id)                                                    null when not found
+
+Trainer  createTrainerProfile(firstname, lastname, isActive, specialization)         generates id, username, password
+Trainer  updateTrainerProfile(trainer)                                               rejects null
+Trainer  selectTrainerProfile(id)                                                    null when not found
+
+Training createTrainingProfile(traineeID, trainerID, name, type, date, duration)     trainee and trainer must exist
+Training selectTrainingProfile(id)                                                   null when not found
+```
+
+There's no delete for trainer or training. Trainee is the only one with full CRUD, which matches the task spec.
+
+## Usernames and passwords
+
+A username is `FirstName.LastName`. If that's already taken, a serial number gets appended, so `John.Smith1`, then `John.Smith2`, and so on. The check runs against trainees and trainers both, not just the one you're creating, so a trainee and a trainer can never end up sharing a username. The suffix always goes on the base name, it doesn't stack onto the previous candidate.
+
+Passwords are 10 random characters drawn from `ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789`, generated with `SecureRandom`. That alphabet deliberately leaves out `I`, `O`, `l`, `0` and `1` so a password doesn't get misread. A fresh one is generated on every profile creation, and nothing hashes it, there's nowhere for it to persist anyway.
+
+## Design
+
+DAO for storage access, one per entity, each owning its own map and doing nothing across entities. Facade in front of the services. Builder through Lombok, `@SuperBuilder` on the user hierarchy and `@Builder` on `Training`, both with `toBuilder` turned on. `BeanPostProcessor` for the CSV seeding.
+
+The DAOs copy on the way in and on the way out. `save` and `update` store a copy rather than the object you handed them, and `findById` and `findAll` hand back copies, so nothing outside a DAO can reach into storage and change what's in it.
+
+## Testing
+
+126 tests, 99.4% line coverage and 100% branch coverage. The only thing not covered is `GymCrmApplication.main`, which is just the Spring Boot entry point.
+
+DAO tests use a real `HashMap` instead of a mock, since a `Map` is a plain JDK class and it's the DAO's own storage, not an external dependency worth faking. Mockito handles the rest, services mock their DAOs, `UsernameResolver` mocks the DAOs and `CredentialGenerator`, `StorageInitializer` mocks the `ResourceLoader`, and the facade mocks the three services.
+
+There's one context test, `GymCrmApplicationTests`. It earns its keep, the three storage beans are all `Map<Long, ?>` and only differ by their generic type, so booting the real context is what proves Spring resolves each one to the right DAO.
+
+## Known limitations
+
+No REST layer. There are no controllers and no web starter, so everything goes through `GymCrmFacade` called directly from Java.
+
+Storage is in memory only. Restarting wipes it and reseeds from the CSV files, nothing survives between runs.
+
+A training's type has to match the assigned trainer's specialization. That rule isn't in the task spec, I added it on purpose because a yoga trainer running a Zumba class seemed wrong. Worth knowing if you feed in data that doesn't respect it.
+
+IDs are `max(existing) + 1` computed separately per entity type, not from one shared counter. A trainee and a trainer can legitimately have the same numeric ID, they're in separate namespaces.
+
+The seed loader accepts a missing training date and stores `null`, but `TrainingService` rejects a null date outright. So the CSV can contain trainings that the service itself would refuse to create.
+
+A blank address column in `trainees.csv` gets stored as an empty string rather than `null`, because the loader only does the blank check on date of birth. Blank date of birth does become `null`.
+
+None of this is thread safe. The storage beans are plain `HashMap`s with no synchronization, and `generateId` reads the max key and the caller writes afterwards, so two threads creating profiles at once could hand out the same ID or corrupt the map.
