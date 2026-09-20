@@ -35,7 +35,7 @@ You can start the app too:
 ./mvnw spring-boot:run
 ```
 
-Be aware there's nothing to talk to. It boots the Spring context, `StorageInitializer` fills the three storage maps from the CSV files, and then the process exits because there's no web server or anything else keeping it alive. The seeding is silent, nothing gets logged about it. If you want to actually exercise the thing, use the test suite or wire `GymCrmFacade` into your own code and call it.
+Be aware there's nothing to talk to. It boots the Spring context, `StorageInitializer` fills the three storage maps from the CSV files and logs how many rows each one got, and then the process exits because there's no web server or anything else keeping it alive. If you want to actually exercise the thing, use the test suite or wire `GymCrmFacade` into your own code and call it.
 
 ## How it's wired
 
@@ -93,7 +93,7 @@ The DAOs copy on the way in and on the way out. `save` and `update` store a copy
 
 ## Testing
 
-126 tests, 99.4% line coverage and 100% branch coverage. The only thing not covered is `GymCrmApplication.main`, which is just the Spring Boot entry point.
+127 tests, 99.4% line coverage and 100% branch coverage. The only thing not covered is `GymCrmApplication.main`, which is just the Spring Boot entry point.
 
 DAO tests use a real `HashMap` instead of a mock, since a `Map` is a plain JDK class and it's the DAO's own storage, not an external dependency worth faking. Mockito handles the rest, services mock their DAOs, `UsernameResolver` mocks the DAOs and `CredentialGenerator`, `StorageInitializer` mocks the `ResourceLoader`, and the facade mocks the three services.
 
@@ -110,6 +110,8 @@ A training's type has to match the assigned trainer's specialization. That rule 
 IDs are `max(existing) + 1` computed separately per entity type, not from one shared counter. A trainee and a trainer can legitimately have the same numeric ID, they're in separate namespaces.
 
 The seed loader accepts a missing training date and stores `null`, but `TrainingService` rejects a null date outright. So the CSV can contain trainings that the service itself would refuse to create.
+
+Duplicate IDs in a seed file don't fail the load. The later row overwrites the earlier one and you end up with fewer entries than the file has rows. The loader logs a warning when that happens, but it won't stop the context from starting.
 
 A blank address column in `trainees.csv` gets stored as an empty string rather than `null`, because the loader only does the blank check on date of birth. Blank date of birth does become `null`.
 

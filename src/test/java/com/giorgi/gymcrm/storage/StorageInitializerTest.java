@@ -83,6 +83,20 @@ class StorageInitializerTest {
     }
 
     @Test
+    @DisplayName("later row wins when two rows share an id")
+    void collapsesDuplicateIds() throws IOException {
+        stubFile(TRAINEE_PATH, TRAINEE_HEADER
+                + "1,John,Smith,John.Smith,aX7kQ2mN9p,true,1998-05-14,123 Main St New York\n"
+                + "1,Emily,Johnson,Emily.Johnson,Zt4rW8pL2q,true,2000-11-02,45 Oak Avenue Boston\n");
+        Map<Long, Trainee> storage = new HashMap<>();
+
+        storageInitializer.postProcessAfterInitialization(storage, "traineeStorage");
+
+        Assertions.assertEquals(1, storage.size());
+        Assertions.assertEquals("Emily", storage.get(1L).getFirstName());
+    }
+
+    @Test
     @DisplayName("reads an inactive trainee as not active")
     void readsInactiveTrainee() throws IOException {
         stubFile(TRAINEE_PATH, TRAINEE_HEADER + "3,Michael,Brown,Michael.Brown,Bn6yU3dF7s,false,1995-03-27,\n");

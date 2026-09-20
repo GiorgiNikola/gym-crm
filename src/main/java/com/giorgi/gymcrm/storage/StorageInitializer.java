@@ -40,6 +40,7 @@ public class StorageInitializer implements BeanPostProcessor {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Object postProcessAfterInitialization(Object bean, String beanName) {
         if ("traineeStorage".equals(beanName)) {
             loadTrainees((Map<Long, Trainee>) bean, traineeFilePath);
@@ -71,6 +72,13 @@ public class StorageInitializer implements BeanPostProcessor {
 
             traineeStorage.put(trainee.getUserID(), trainee);
         }
+
+        int rows = traineeEntries.size() - 1;
+        if (traineeStorage.size() < rows) {
+            log.warn("Loaded {} trainees from {} but the file had {} rows, ids are duplicated",
+                    traineeStorage.size(), traineeFilePath, rows);
+        }
+        log.info("Loaded {} trainees from {}", traineeStorage.size(), traineeFilePath);
     }
 
     private void loadTrainers(Map<Long, Trainer> trainerStorage, String trainerFilePath) {
@@ -90,6 +98,13 @@ public class StorageInitializer implements BeanPostProcessor {
 
             trainerStorage.put(trainer.getUserID(), trainer);
         }
+
+        int rows = trainerEntries.size() - 1;
+        if (trainerStorage.size() < rows) {
+            log.warn("Loaded {} trainers from {} but the file had {} rows, ids are duplicated",
+                    trainerStorage.size(), trainerFilePath, rows);
+        }
+        log.info("Loaded {} trainers from {}", trainerStorage.size(), trainerFilePath);
     }
 
     private void loadTrainings(Map<Long, Training> trainingStorage, String trainingFilePath) {
@@ -109,6 +124,13 @@ public class StorageInitializer implements BeanPostProcessor {
 
             trainingStorage.put(training.getID(), training);
         }
+
+        int rows = trainingEntries.size() - 1;
+        if (trainingStorage.size() < rows) {
+            log.warn("Loaded {} trainings from {} but the file had {} rows, ids are duplicated",
+                    trainingStorage.size(), trainingFilePath, rows);
+        }
+        log.info("Loaded {} trainings from {}", trainingStorage.size(), trainingFilePath);
     }
 
     private List<String> readLines(String path) {
@@ -116,7 +138,6 @@ public class StorageInitializer implements BeanPostProcessor {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource.getInputStream()))) {
             return reader.lines().toList();
         } catch (IOException e) {
-            log.error("Failed to read storage file: {}", path, e);
             throw new UncheckedIOException("Failed to read storage file: " + path, e);
         }
     }
