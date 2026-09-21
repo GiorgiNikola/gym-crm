@@ -35,7 +35,21 @@ You can start the app too:
 ./mvnw spring-boot:run
 ```
 
-Be aware there's nothing to talk to. It boots the Spring context, `StorageInitializer` fills the three storage maps from the CSV files and logs how many rows each one got, and then the process exits because there's no web server or anything else keeping it alive. If you want to actually exercise the thing, use the test suite or wire `GymCrmFacade` into your own code and call it.
+Be aware there's nothing to talk to. It boots the Spring context, `StorageInitializer` fills the three storage maps from the CSV files and logs how many rows each one got, and then the process exits because there's no web server or anything else keeping it alive. If you want to actually see it do something, run the demo below.
+
+## Demo
+
+There's a demo runner that goes through the facade against the seeded data. It only exists under the `demo` profile, so a plain `spring-boot:run` and the tests never touch it.
+
+```bash
+./mvnw spring-boot:run "-Dspring-boot.run.profiles=demo"
+```
+
+Keep the quotes, PowerShell splits the argument on the dots without them.
+
+It looks up a seeded trainee, then creates a second John Smith, who ends up as `John.Smith1`. Then a trainer called Ana Kapanadze, who gets `Ana.Kapanadze1` because a trainee already owns the base name. It books a yoga training between the two, tries to change John's username through an update and shows it stays put, then creates a throwaway trainee and deletes it. Each step logs a line starting with `Demo:` next to the services' own INFO lines. Passwords only show up as their length. The process exits when it's done, and since storage is in memory, the next run starts from the CSV seed again.
+
+The demo is `GymCrmDemo` in the `demo` package, a `CommandLineRunner` marked `@Profile("demo")`. It gets the facade through a setter like everything else.
 
 ## How it's wired
 
@@ -109,7 +123,7 @@ Each failure is logged once, where it's detected, then thrown. Nothing above cat
 
 ## Testing
 
-Line coverage is well above 80%. Open the JaCoCo report for the current numbers.
+Line coverage is well above 80%. Open the JaCoCo report for the current numbers. The demo runner is the main thing left uncovered, it's a walkthrough with no logic of its own.
 
 DAO tests use a real `HashMap` instead of a mock, since a `Map` is a plain JDK class and it's the DAO's own storage, not an external dependency worth faking. Mockito handles the rest, services mock their DAOs, `UsernameResolver` mocks the DAOs and `CredentialGenerator`, `StorageInitializer` mocks the `ResourceLoader`, and the facade mocks the three services.
 
