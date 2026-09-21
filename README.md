@@ -11,7 +11,7 @@ Java 21, Spring Boot 4.1.1 (Spring Core only, no web starter), Lombok 1.18.46, J
 Clone it:
 
 ```bash
-git clone https://github.com/GiorgiNikola/gym-crm.git
+git clone -b spring-core https://github.com/GiorgiNikola/gym-crm.git
 cd gym-crm
 ```
 
