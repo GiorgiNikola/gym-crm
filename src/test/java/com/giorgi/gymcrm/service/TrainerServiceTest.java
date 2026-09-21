@@ -105,14 +105,47 @@ class TrainerServiceTest {
     }
 
     @Test
-    @DisplayName("update passes the trainer to the dao")
+    @DisplayName("update saves new details but keeps username, password and specialization")
     void updatesTrainerProfile() {
-        Trainer robert = Trainer.builder().userID(1L).firstName("Robert").build();
-        when(trainerDao.update(robert)).thenReturn(robert);
+        Trainer stored = Trainer.builder().userID(1L).firstName("Robert").lastName("Taylor")
+                .username("Robert.Taylor").password("Hj2wE8rT4y").isActive(true)
+                .specialization(TrainingType.FITNESS).build();
+        Trainer changes = Trainer.builder().userID(1L).firstName("Rob").lastName("Taylor")
+                .username("Someone.Else").password("newPassword").isActive(false)
+                .specialization(TrainingType.YOGA).build();
+        when(trainerDao.findById(1L)).thenReturn(stored);
+        when(trainerDao.update(any(Trainer.class))).thenAnswer(call -> call.getArgument(0));
 
-        Trainer updated = trainerService.updateTrainerProfile(robert);
+        Trainer updated = trainerService.updateTrainerProfile(changes);
 
-        Assertions.assertSame(robert, updated);
+        Assertions.assertEquals("Rob", updated.getFirstName());
+        Assertions.assertFalse(updated.isActive());
+        Assertions.assertEquals("Robert.Taylor", updated.getUsername());
+        Assertions.assertEquals("Hj2wE8rT4y", updated.getPassword());
+        Assertions.assertEquals(TrainingType.FITNESS, updated.getSpecialization());
+    }
+
+    @Test
+    @DisplayName("update rejects an unknown trainer")
+    void rejectsUnknownTrainerOnUpdate() {
+        Trainer unknown = Trainer.builder().userID(99L).firstName("Nino").lastName("Gelashvili").build();
+        when(trainerDao.findById(99L)).thenReturn(null);
+
+        Assertions.assertThrows(IllegalArgumentException.class, () -> trainerService.updateTrainerProfile(unknown));
+        verify(trainerDao, never()).update(any(Trainer.class));
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "   "})
+    @DisplayName("update rejects a missing last name")
+    void rejectsBlankLastNameOnUpdate(String lastName) {
+        Trainer stored = Trainer.builder().userID(1L).firstName("Robert").lastName("Taylor").build();
+        Trainer changes = Trainer.builder().userID(1L).firstName("Robert").lastName(lastName).build();
+        when(trainerDao.findById(1L)).thenReturn(stored);
+
+        Assertions.assertThrows(IllegalArgumentException.class, () -> trainerService.updateTrainerProfile(changes));
+        verify(trainerDao, never()).update(any(Trainer.class));
     }
 
     @Test

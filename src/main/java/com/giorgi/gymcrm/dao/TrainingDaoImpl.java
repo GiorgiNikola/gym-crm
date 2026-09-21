@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -30,6 +31,14 @@ public class TrainingDaoImpl implements TrainingDao {
     public Training findById(long id) {
         Training training = trainings.get(id);
         return training != null ? copyOf(training) : null;
+    }
+
+    @Override
+    public List<Training> findAll() {
+        return trainings.values()
+                .stream()
+                .map(this::copyOf)
+                .toList();
     }
 
     @Override

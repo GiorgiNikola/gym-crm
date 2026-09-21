@@ -34,24 +34,9 @@ public class TrainerService {
                                         String lastname,
                                         boolean isActive,
                                         TrainingType specialization) {
-        if (firstname == null) {
-            log.error("First name is null");
-            throw new IllegalArgumentException("First name must not be null");
-        }
-        if (firstname.isBlank()) {
-            log.error("First name is blank");
-            throw new IllegalArgumentException("First name must not be blank");
-        }
-        if (lastname == null) {
-            log.error("Last name is null");
-            throw new IllegalArgumentException("Last name must not be null");
-        }
-        if (lastname.isBlank()) {
-            log.error("Last name is blank");
-            throw new IllegalArgumentException("Last name must not be blank");
-        }
+        validateNames(firstname, lastname);
         if (specialization == null) {
-            log.error("Specialization is null");
+            log.warn("Trainer validation failed, specialization is missing");
             throw new IllegalArgumentException("Specialization must not be null");
         }
 
@@ -69,19 +54,49 @@ public class TrainerService {
                 .specialization(specialization)
                 .build();
 
-        log.info("Creating trainer profile, username: {}", username);
-        return trainerDao.save(trainer);
+        Trainer savedTrainer = trainerDao.save(trainer);
+        log.info("Created trainer profile, id: {}, username: {}", savedTrainer.getUserID(), savedTrainer.getUsername());
+        return savedTrainer;
     }
 
     public Trainer updateTrainerProfile(Trainer trainer) {
         if (trainer == null) {
-            log.error("Trainer is null");
+            log.warn("Trainer update rejected, trainer is null");
             throw new IllegalArgumentException("Trainer must not be null");
         }
-        return trainerDao.update(trainer);
+
+        Trainer existingTrainer = trainerDao.findById(trainer.getUserID());
+        if (existingTrainer == null) {
+            log.warn("Trainer update rejected, trainer with id: {} does not exist", trainer.getUserID());
+            throw new IllegalArgumentException("Trainer with id: " + trainer.getUserID() + " does not exist");
+        }
+
+        validateNames(trainer.getFirstName(), trainer.getLastName());
+
+        Trainer updatedTrainer = trainer.toBuilder()
+                .username(existingTrainer.getUsername())
+                .password(existingTrainer.getPassword())
+                .specialization(existingTrainer.getSpecialization())
+                .build();
+
+        Trainer savedTrainer = trainerDao.update(updatedTrainer);
+        log.info("Updated trainer profile, id: {}, username: {}", savedTrainer.getUserID(), savedTrainer.getUsername());
+        return savedTrainer;
     }
 
     public Trainer selectTrainerProfile(long id) {
+        log.debug("Selecting trainer profile, id: {}", id);
         return trainerDao.findById(id);
+    }
+
+    private void validateNames(String firstName, String lastName) {
+        if (firstName == null || firstName.isBlank()) {
+            log.warn("Trainer validation failed, first name is missing");
+            throw new IllegalArgumentException("First name must not be null or blank");
+        }
+        if (lastName == null || lastName.isBlank()) {
+            log.warn("Trainer validation failed, last name is missing");
+            throw new IllegalArgumentException("Last name must not be null or blank");
+        }
     }
 }

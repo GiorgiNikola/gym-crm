@@ -105,6 +105,25 @@ class TrainingDaoImplTest {
     }
 
     @Test
+    @DisplayName("findAll returns every training")
+    void findAllReturnsEveryTraining() {
+        trainings.put(1L, training(1L, "Morning Fitness Session", TrainingType.FITNESS));
+        trainings.put(2L, training(2L, "Beginner Yoga Class", TrainingType.YOGA));
+
+        Assertions.assertEquals(2, trainingDao.findAll().size());
+    }
+
+    @Test
+    @DisplayName("editing what findAll returns does not touch storage")
+    void findAllResultsAreDetached() {
+        trainings.put(1L, training(1L, "Morning Fitness Session", TrainingType.FITNESS));
+
+        trainingDao.findAll().get(0).setName("Edited");
+
+        Assertions.assertEquals("Morning Fitness Session", trainings.get(1L).getName());
+    }
+
+    @Test
     @DisplayName("generateId starts at 1 on empty storage")
     void generatesFirstId() {
         Assertions.assertEquals(1L, trainingDao.generateId());

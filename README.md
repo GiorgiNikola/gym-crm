@@ -45,7 +45,7 @@ Each storage map is its own bean. `StorageConfig` declares three separate `@Bean
 
 Injection is setter based almost everywhere. The storage maps go into the DAOs through setters, the DAOs go into the services through setters, and `UsernameResolver` and `StorageInitializer` take their collaborators the same way. The one exception is `GymCrmFacade`, which gets the three services through its constructor. That split is what the task asks for, it isn't a style preference.
 
-The CSV paths come from `storage.properties`, which `StorageConfig` pulls in with `@PropertySource("classpath:storage.properties")`. The three properties are `trainee.file.path`, `trainer.file.path` and `training.file.path`, and `StorageInitializer` reads them into fields with `@Value`. They're `classpath:` locations, resolved through Spring's `ResourceLoader`.
+The CSV paths come from `storage.properties`, which `StorageConfig` pulls in with `@PropertySource("classpath:storage.properties")`. The three properties are `trainee.file.path`, `trainer.file.path` and `training.file.path`, and `StorageInitializer` gets them through `@Value` setter methods. They're `classpath:` locations, resolved through Spring's `ResourceLoader`.
 
 ## Seed data
 
@@ -65,12 +65,12 @@ The files live in `src/main/resources/data`, one per entity.
 
 ```
 Trainee  createTraineeProfile(firstname, lastname, isActive, dateOfBirth, address)   generates id, username, password
-Trainee  updateTraineeProfile(trainee)                                               rejects null
+Trainee  updateTraineeProfile(trainee)                                               validates names, keeps username and password
 void     deleteTraineeProfile(id)                                                    does nothing if the id is unknown
 Trainee  selectTraineeProfile(id)                                                    null when not found
 
 Trainer  createTrainerProfile(firstname, lastname, isActive, specialization)         generates id, username, password
-Trainer  updateTrainerProfile(trainer)                                               rejects null
+Trainer  updateTrainerProfile(trainer)                                               validates names, keeps username, password, specialization
 Trainer  selectTrainerProfile(id)                                                    null when not found
 
 Training createTrainingProfile(traineeID, trainerID, name, type, date, duration)     trainee and trainer must exist
@@ -85,15 +85,31 @@ A username is `FirstName.LastName`. If that's already taken, a serial number get
 
 Passwords are 10 random characters drawn from `ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789`, generated with `SecureRandom`. That alphabet deliberately leaves out `I`, `O`, `l`, `0` and `1` so a password doesn't get misread. A fresh one is generated on every profile creation, and nothing hashes it, there's nowhere for it to persist anyway.
 
+Updating a profile can't touch the username or password. Both get copied over from the stored record whatever the caller sends, so an update can't sneak in a duplicate username. Same goes for a trainer's specialization, existing trainings were checked against it, so it stays put.
+
 ## Design
 
 DAO for storage access, one per entity, each owning its own map and doing nothing across entities. Facade in front of the services. Builder through Lombok, `@SuperBuilder` on the user hierarchy and `@Builder` on `Training`, both with `toBuilder` turned on. `BeanPostProcessor` for the CSV seeding.
 
 The DAOs copy on the way in and on the way out. `save` and `update` store a copy rather than the object you handed them, and `findById` and `findAll` hand back copies, so nothing outside a DAO can reach into storage and change what's in it.
 
+## Logging
+
+SLF4J through Lombok's `@Slf4j`. `application.properties` sets `com.giorgi.gymcrm` to DEBUG, so every level below shows up.
+
+WARN is for rejected input. Blank names, a missing specialization, a training for a trainee or trainer that doesn't exist, a duration that isn't positive, an update or delete for an unknown id. The message says what was wrong, with the bad value in it when there is one. The seed loader also warns when a file has duplicate ids.
+
+INFO is for things that actually happened. Create, update and delete get logged after the DAO call returns, so a save that blows up never leaves a success line behind. `UsernameResolver` logs the username it settled on, and the seed loader logs how many rows it loaded from each file.
+
+DEBUG is for lookups, the select methods, plus every taken username `UsernameResolver` had to skip on the way.
+
+ERROR is left for the DAOs, a duplicate id on save or an update for an id that isn't stored. Going through the services neither should happen, the service checks first, so seeing one means something's actually broken.
+
+Each failure is logged once, where it's detected, then thrown. Nothing above catches it and logs it again, so the same problem doesn't show up three times. Passwords never go into a log line, only ids and usernames.
+
 ## Testing
 
-127 tests, 99.4% line coverage and 100% branch coverage. The only thing not covered is `GymCrmApplication.main`, which is just the Spring Boot entry point.
+Line coverage is well above 80%. Open the JaCoCo report for the current numbers.
 
 DAO tests use a real `HashMap` instead of a mock, since a `Map` is a plain JDK class and it's the DAO's own storage, not an external dependency worth faking. Mockito handles the rest, services mock their DAOs, `UsernameResolver` mocks the DAOs and `CredentialGenerator`, `StorageInitializer` mocks the `ResourceLoader`, and the facade mocks the three services.
 

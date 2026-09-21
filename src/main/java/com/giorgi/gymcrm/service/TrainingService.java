@@ -35,52 +35,47 @@ public class TrainingService {
     }
 
     public Training createTrainingProfile(long traineeID,
-                                         long trainerID,
-                                         String name,
-                                         TrainingType type,
-                                         LocalDate date,
-                                         long duration) {
+                                          long trainerID,
+                                          String name,
+                                          TrainingType type,
+                                          LocalDate date,
+                                          long duration) {
         if (!traineeDao.existsByID(traineeID)) {
-            log.error("Trainee with id: {} does not exist", traineeID);
+            log.warn("Training creation rejected, trainee with id: {} does not exist", traineeID);
             throw new IllegalArgumentException("Trainee with id: " + traineeID +" does not exist");
         }
 
         Trainer trainer = trainerDao.findById(trainerID);
 
         if (trainer == null) {
-            log.error("Trainer with id: {} does not exist", trainerID);
+            log.warn("Training creation rejected, trainer with id: {} does not exist", trainerID);
             throw new IllegalArgumentException("Trainer with id: " + trainerID +" does not exist");
         }
 
-        if (name == null) {
-            log.error("Training name is null");
-            throw new IllegalArgumentException("Training name should not be null");
-        }
-
-        if (name.isBlank()) {
-            log.error("Training name is blank");
-            throw new IllegalArgumentException("Training name should not be blank");
+        if (name == null || name.isBlank()) {
+            log.warn("Training creation rejected, training name is missing");
+            throw new IllegalArgumentException("Training name should not be null or blank");
         }
 
         if (type == null) {
-            log.error("Training type is null");
+            log.warn("Training creation rejected, training type is missing");
             throw new IllegalArgumentException("Training type should not be null");
         }
 
         if (date == null) {
-            log.error("Training date is null");
+            log.warn("Training creation rejected, training date is missing");
             throw new IllegalArgumentException("Training date should not be null");
         }
 
         if (duration <= 0) {
-            log.error("Training duration is not positive number");
+            log.warn("Training creation rejected, duration must be positive but was: {}", duration);
             throw new IllegalArgumentException("Training duration should not be zero or negative");
         }
 
         TrainingType trainersSpecialization = trainer.getSpecialization();
 
         if (!type.equals(trainersSpecialization)) {
-            log.error("Training type: {} does not match trainers specialization: {}", type, trainersSpecialization);
+            log.warn("Training creation rejected, type: {} does not match trainer specialization: {}", type, trainersSpecialization);
             throw new IllegalArgumentException("Training type: " + type + " does not match trainers specialization: " + trainersSpecialization);
         }
 
@@ -96,11 +91,13 @@ public class TrainingService {
                 .duration(duration)
                 .build();
 
-        log.info("Creating training with id: {}", id);
-        return trainingDao.save(training);
+        Training savedTraining = trainingDao.save(training);
+        log.info("Created training, id: {}, trainee id: {}, trainer id: {}", savedTraining.getID(), traineeID, trainerID);
+        return savedTraining;
     }
 
     public Training selectTrainingProfile(long id) {
+        log.debug("Selecting training profile, id: {}", id);
         return trainingDao.findById(id);
     }
 }

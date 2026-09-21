@@ -121,14 +121,44 @@ class TraineeServiceTest {
     }
 
     @Test
-    @DisplayName("update passes the trainee to the dao")
+    @DisplayName("update saves new details but keeps stored username and password")
     void updatesTraineeProfile() {
-        Trainee john = Trainee.builder().userID(1L).firstName("John").build();
-        when(traineeDao.update(john)).thenReturn(john);
+        Trainee stored = Trainee.builder().userID(1L).firstName("John").lastName("Smith")
+                .username("John.Smith").password("aX7kQ2mN9p").build();
+        Trainee changes = Trainee.builder().userID(1L).firstName("Johnny").lastName("Smith")
+                .username("Someone.Else").password("newPassword").address("45 Oak Avenue").build();
+        when(traineeDao.findById(1L)).thenReturn(stored);
+        when(traineeDao.update(any(Trainee.class))).thenAnswer(call -> call.getArgument(0));
 
-        Trainee updated = traineeService.updateTraineeProfile(john);
+        Trainee updated = traineeService.updateTraineeProfile(changes);
 
-        Assertions.assertSame(john, updated);
+        Assertions.assertEquals("Johnny", updated.getFirstName());
+        Assertions.assertEquals("45 Oak Avenue", updated.getAddress());
+        Assertions.assertEquals("John.Smith", updated.getUsername());
+        Assertions.assertEquals("aX7kQ2mN9p", updated.getPassword());
+    }
+
+    @Test
+    @DisplayName("update rejects an unknown trainee")
+    void rejectsUnknownTraineeOnUpdate() {
+        Trainee unknown = Trainee.builder().userID(99L).firstName("Ana").lastName("Kapanadze").build();
+        when(traineeDao.findById(99L)).thenReturn(null);
+
+        Assertions.assertThrows(IllegalArgumentException.class, () -> traineeService.updateTraineeProfile(unknown));
+        verify(traineeDao, never()).update(any(Trainee.class));
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "   "})
+    @DisplayName("update rejects a missing first name")
+    void rejectsBlankFirstNameOnUpdate(String firstName) {
+        Trainee stored = Trainee.builder().userID(1L).firstName("John").lastName("Smith").build();
+        Trainee changes = Trainee.builder().userID(1L).firstName(firstName).lastName("Smith").build();
+        when(traineeDao.findById(1L)).thenReturn(stored);
+
+        Assertions.assertThrows(IllegalArgumentException.class, () -> traineeService.updateTraineeProfile(changes));
+        verify(traineeDao, never()).update(any(Trainee.class));
     }
 
     @Test
@@ -140,11 +170,23 @@ class TraineeServiceTest {
     }
 
     @Test
-    @DisplayName("delete passes the id to the dao")
+    @DisplayName("delete removes an existing trainee")
     void deletesTraineeProfile() {
+        when(traineeDao.existsByID(1L)).thenReturn(true);
+
         traineeService.deleteTraineeProfile(1L);
 
         verify(traineeDao).delete(1L);
+    }
+
+    @Test
+    @DisplayName("delete does nothing for an unknown id")
+    void skipsDeleteForUnknownId() {
+        when(traineeDao.existsByID(99L)).thenReturn(false);
+
+        traineeService.deleteTraineeProfile(99L);
+
+        verify(traineeDao, never()).delete(anyLong());
     }
 
     @Test

@@ -23,16 +23,28 @@ import java.util.Map;
 @Slf4j
 @Component
 public class StorageInitializer implements BeanPostProcessor {
-    @Value("${trainee.file.path}")
     private String traineeFilePath;
 
-    @Value("${trainer.file.path}")
     private String trainerFilePath;
 
-    @Value("${training.file.path}")
     private String trainingFilePath;
 
     private ResourceLoader resourceLoader;
+
+    @Value("${trainee.file.path}")
+    public void setTraineeFilePath(String traineeFilePath) {
+        this.traineeFilePath = traineeFilePath;
+    }
+
+    @Value("${trainer.file.path}")
+    public void setTrainerFilePath(String trainerFilePath) {
+        this.trainerFilePath = trainerFilePath;
+    }
+
+    @Value("${training.file.path}")
+    public void setTrainingFilePath(String trainingFilePath) {
+        this.trainingFilePath = trainingFilePath;
+    }
 
     @Autowired
     public void setResourceLoader(ResourceLoader resourceLoader) {

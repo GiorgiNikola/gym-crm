@@ -36,22 +36,7 @@ public class TraineeService {
                                         boolean isActive,
                                         LocalDate dateOfBirth,
                                         String address) {
-        if (firstname == null) {
-            log.error("First name is null");
-            throw new IllegalArgumentException("First name must not be null");
-        }
-        if (firstname.isBlank()) {
-            log.error("First name is blank");
-            throw new IllegalArgumentException("First name must not be blank");
-        }
-        if (lastname == null) {
-            log.error("Last name is null");
-            throw new IllegalArgumentException("Last name must not be null");
-        }
-        if (lastname.isBlank()) {
-            log.error("Last name is blank");
-            throw new IllegalArgumentException("Last name must not be blank");
-        }
+        validateNames(firstname, lastname);
 
         long id = traineeDao.generateId();
         String username = usernameResolver.generateUsername(firstname, lastname);
@@ -68,23 +53,58 @@ public class TraineeService {
                 .address(address)
                 .build();
 
-        log.info("Creating trainee profile, username: {}", username);
-        return traineeDao.save(trainee);
+        Trainee savedTrainee = traineeDao.save(trainee);
+        log.info("Created trainee profile, id: {}, username: {}", savedTrainee.getUserID(), savedTrainee.getUsername());
+        return savedTrainee;
     }
 
     public Trainee updateTraineeProfile(Trainee trainee) {
         if (trainee == null) {
-            log.error("Trainee is null");
+            log.warn("Trainee update rejected, trainee is null");
             throw new IllegalArgumentException("Trainee must not be null");
         }
-        return traineeDao.update(trainee);
+
+        Trainee existingTrainee = traineeDao.findById(trainee.getUserID());
+        if (existingTrainee == null) {
+            log.warn("Trainee update rejected, trainee with id: {} does not exist", trainee.getUserID());
+            throw new IllegalArgumentException("Trainee with id: " + trainee.getUserID() + " does not exist");
+        }
+
+        validateNames(trainee.getFirstName(), trainee.getLastName());
+
+        Trainee updatedTrainee = trainee.toBuilder()
+                .username(existingTrainee.getUsername())
+                .password(existingTrainee.getPassword())
+                .build();
+
+        Trainee savedTrainee = traineeDao.update(updatedTrainee);
+        log.info("Updated trainee profile, id: {}, username: {}", savedTrainee.getUserID(), savedTrainee.getUsername());
+        return savedTrainee;
     }
 
     public void deleteTraineeProfile(long id) {
+        if (!traineeDao.existsByID(id)) {
+            log.warn("Trainee delete skipped, trainee with id: {} does not exist", id);
+            return;
+        }
+
         traineeDao.delete(id);
+        log.info("Deleted trainee profile, id: {}", id);
     }
 
     public Trainee selectTraineeProfile(long id) {
+        log.debug("Selecting trainee profile, id: {}", id);
         return traineeDao.findById(id);
+    }
+
+    private void validateNames(String firstName, String lastName) {
+        if (firstName == null || firstName.isBlank()) {
+            log.warn("Trainee validation failed, first name is missing");
+            throw new IllegalArgumentException("First name must not be null or blank");
+        }
+        if (lastName == null || lastName.isBlank()) {
+            log.warn("Trainee validation failed, last name is missing");
+            throw new IllegalArgumentException("Last name must not be null or blank");
+        }
     }
 }
