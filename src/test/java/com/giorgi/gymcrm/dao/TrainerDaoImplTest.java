@@ -1,217 +1,161 @@
 package com.giorgi.gymcrm.dao;
 
+import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.TrainingType;
+import com.giorgi.gymcrm.model.User;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 
+@SpringBootTest
+@Transactional
 class TrainerDaoImplTest {
-    private Map<Long, Trainer> trainers;
-    private TrainerDaoImpl trainerDao;
 
-    @BeforeEach
-    void setUp() {
-        trainers = new HashMap<>();
-        trainerDao = new TrainerDaoImpl();
-        trainerDao.setTrainers(trainers);
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Autowired
+    private TrainerDao trainerDao;
+
+    private TrainingType trainingType(String name) {
+        return entityManager
+                .createQuery("select tt from TrainingType tt where tt.name = :name", TrainingType.class)
+                .setParameter("name", name)
+                .getSingleResult();
     }
 
-    private Trainer trainer(long id, String firstName, String lastName, TrainingType specialization) {
-        return Trainer.builder()
-                .userID(id)
+    private User user(String firstName, String lastName, boolean active) {
+        return User.builder()
                 .firstName(firstName)
                 .lastName(lastName)
                 .username(firstName + "." + lastName)
                 .password("Hj2wE8rT4y")
-                .isActive(true)
-                .specialization(specialization)
+                .isActive(active)
                 .build();
     }
 
-    @Test
-    @DisplayName("saves trainer and returns it back")
-    void savesTrainerToStorage() {
-        Trainer saved = trainerDao.save(trainer(1L, "Robert", "Taylor", TrainingType.FITNESS));
+    private Trainer trainer(String firstName, String lastName, String specialization, boolean active) {
+        return Trainer.builder()
+                .user(user(firstName, lastName, active))
+                .specialization(trainingType(specialization))
+                .build();
+    }
 
-        Assertions.assertEquals("Robert", trainers.get(1L).getFirstName());
-        Assertions.assertEquals(1L, saved.getUserID());
-        Assertions.assertEquals("Robert.Taylor", saved.getUsername());
-        Assertions.assertEquals(TrainingType.FITNESS, saved.getSpecialization());
+    private Trainee trainee(String firstName, String lastName) {
+        return Trainee.builder()
+                .user(user(firstName, lastName, true))
+                .build();
+    }
+
+    private List<String> usernames(List<Trainer> trainers) {
+        return trainers.stream().map(t -> t.getUser().getUsername()).toList();
     }
 
     @Test
-    @DisplayName("save throws on duplicate id and keeps the old trainer")
-    void throwsOnDuplicateId() {
-        trainers.put(2L, trainer(2L, "Sarah", "Miller", TrainingType.YOGA));
+    @DisplayName("save stores the trainer with its user and specialization")
+    void savesTrainerWithUserAndSpecialization() {
+        Trainer saved = trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));
+        entityManager.flush();
+        entityManager.clear();
 
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainerDao.save(trainer(2L, "Giorgi", "Beridze", TrainingType.ZUMBA)));
-        Assertions.assertEquals(TrainingType.YOGA, trainers.get(2L).getSpecialization());
+        Trainer found = entityManager.find(Trainer.class, saved.getId());
+        Assertions.assertNotNull(found);
+        Assertions.assertEquals("Sarah.Miller", found.getUser().getUsername());
+        Assertions.assertEquals("YOGA", found.getSpecialization().getName());
     }
 
     @Test
-    @DisplayName("save does not keep the caller's object")
-    void saveDoesNotKeepCallerObject() {
-        Trainer sarah = trainer(2L, "Sarah", "Miller", TrainingType.YOGA);
-        trainerDao.save(sarah);
+    @DisplayName("findByUsername returns the trainer with user and specialization loaded")
+    void findByUsernameLoadsUserAndSpecialization() {
+        trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));
+        entityManager.flush();
+        entityManager.clear();
 
-        sarah.setSpecialization(TrainingType.ZUMBA);
+        Trainer found = trainerDao.findByUsername("Sarah.Miller").orElseThrow();
 
-        Assertions.assertEquals(TrainingType.YOGA, trainers.get(2L).getSpecialization());
+        Assertions.assertTrue(Hibernate.isInitialized(found.getUser()));
+        Assertions.assertTrue(Hibernate.isInitialized(found.getSpecialization()));
+        Assertions.assertEquals("Sarah", found.getUser().getFirstName());
+        Assertions.assertEquals("YOGA", found.getSpecialization().getName());
     }
 
     @Test
-    @DisplayName("editing what save returns does not touch storage")
-    void saveResultIsDetached() {
-        Trainer saved = trainerDao.save(trainer(2L, "Sarah", "Miller", TrainingType.YOGA));
+    @DisplayName("findByUsername returns empty for an unknown username")
+    void findByUsernameReturnsEmptyForUnknownUsername() {
+        Optional<Trainer> found = trainerDao.findByUsername("Nobody.Here");
 
-        saved.setSpecialization(TrainingType.ZUMBA);
-
-        Assertions.assertEquals(TrainingType.YOGA, trainers.get(2L).getSpecialization());
+        Assertions.assertTrue(found.isEmpty());
     }
 
     @Test
-    @DisplayName("update replaces the stored trainer")
-    void updatesStoredTrainer() {
-        trainers.put(3L, trainer(3L, "Giorgi", "Beridze", TrainingType.ZUMBA));
+    @DisplayName("findNotAssignedToTrainee returns every active trainer when none are assigned")
+    void findNotAssignedReturnsAllActiveTrainers() {
+        trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));
+        trainerDao.save(trainer("Robert", "Taylor", "FITNESS", true));
+        entityManager.persist(trainee("John", "Smith"));
+        entityManager.flush();
+        entityManager.clear();
 
-        Trainer updated = trainerDao.update(trainer(3L, "Giorgi", "Beridze", TrainingType.RESISTANCE));
+        List<Trainer> unassigned = trainerDao.findNotAssignedToTrainee("John.Smith");
 
-        Assertions.assertEquals(TrainingType.RESISTANCE, trainers.get(3L).getSpecialization());
-        Assertions.assertEquals(TrainingType.RESISTANCE, updated.getSpecialization());
+        Assertions.assertEquals(2, unassigned.size());
+        Assertions.assertTrue(usernames(unassigned).containsAll(List.of("Sarah.Miller", "Robert.Taylor")));
     }
 
     @Test
-    @DisplayName("update throws for unknown id")
-    void updateThrowsForUnknownId() {
-        Trainer unknown = trainer(99L, "Nino", "Gelashvili", TrainingType.YOGA);
+    @DisplayName("findNotAssignedToTrainee leaves out trainers the trainee already has")
+    void findNotAssignedExcludesAssignedTrainers() {
+        Trainer sarah = trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));
+        trainerDao.save(trainer("Robert", "Taylor", "FITNESS", true));
+        Trainee john = trainee("John", "Smith");
+        john.getTrainers().add(sarah);
+        entityManager.persist(john);
+        entityManager.flush();
+        entityManager.clear();
 
-        Assertions.assertThrows(IllegalArgumentException.class, () -> trainerDao.update(unknown));
+        List<Trainer> unassigned = trainerDao.findNotAssignedToTrainee("John.Smith");
+
+        Assertions.assertEquals(1, unassigned.size());
+        Assertions.assertEquals("Robert.Taylor", unassigned.get(0).getUser().getUsername());
     }
 
     @Test
-    @DisplayName("update does not keep the caller's object")
-    void updateDoesNotKeepCallerObject() {
-        trainers.put(3L, trainer(3L, "Giorgi", "Beridze", TrainingType.ZUMBA));
-        Trainer updated = trainer(3L, "Giorgi", "Beridze", TrainingType.RESISTANCE);
-        trainerDao.update(updated);
+    @DisplayName("findNotAssignedToTrainee leaves out inactive trainers")
+    void findNotAssignedExcludesInactiveTrainers() {
+        trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));
+        trainerDao.save(trainer("Laura", "Davis", "STRETCHING", false));
+        entityManager.persist(trainee("John", "Smith"));
+        entityManager.flush();
+        entityManager.clear();
 
-        updated.setSpecialization(TrainingType.FITNESS);
+        List<Trainer> unassigned = trainerDao.findNotAssignedToTrainee("John.Smith");
 
-        Assertions.assertEquals(TrainingType.RESISTANCE, trainers.get(3L).getSpecialization());
+        Assertions.assertEquals(1, unassigned.size());
+        Assertions.assertEquals("Sarah.Miller", unassigned.get(0).getUser().getUsername());
     }
 
     @Test
-    @DisplayName("finds trainer by id")
-    void findsTrainerById() {
-        trainers.put(3L, trainer(3L, "Giorgi", "Beridze", TrainingType.ZUMBA));
+    @DisplayName("update persists a changed specialization")
+    void updateChangesSpecialization() {
+        Trainer saved = trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));
+        entityManager.flush();
 
-        Trainer found = trainerDao.findById(3L);
+        saved.setSpecialization(trainingType("STRETCHING"));
+        trainerDao.update(saved);
+        entityManager.flush();
+        entityManager.clear();
 
-        Assertions.assertEquals("Giorgi.Beridze", found.getUsername());
-        Assertions.assertEquals(TrainingType.ZUMBA, found.getSpecialization());
-    }
-
-    @Test
-    @DisplayName("findById returns null for unknown id")
-    void returnsNullForUnknownId() {
-        Assertions.assertNull(trainerDao.findById(999L));
-    }
-
-    @Test
-    @DisplayName("editing what findById returns does not touch storage")
-    void findByIdResultIsDetached() {
-        trainers.put(1L, trainer(1L, "Robert", "Taylor", TrainingType.FITNESS));
-
-        Trainer found = trainerDao.findById(1L);
-        found.setSpecialization(TrainingType.YOGA);
-
-        Assertions.assertEquals(TrainingType.FITNESS, trainers.get(1L).getSpecialization());
-    }
-
-    @Test
-    @DisplayName("findAll returns empty list when storage is empty")
-    void findAllReturnsEmptyList() {
-        Assertions.assertTrue(trainerDao.findAll().isEmpty());
-    }
-
-    @Test
-    @DisplayName("findAll returns every trainer")
-    void findAllReturnsEveryTrainer() {
-        trainers.put(1L, trainer(1L, "Robert", "Taylor", TrainingType.FITNESS));
-        trainers.put(2L, trainer(2L, "Sarah", "Miller", TrainingType.YOGA));
-
-        List<Trainer> all = trainerDao.findAll();
-
-        Assertions.assertEquals(2, all.size());
-    }
-
-    @Test
-    @DisplayName("editing what findAll returns does not touch storage")
-    void findAllResultsAreDetached() {
-        trainers.put(1L, trainer(1L, "Robert", "Taylor", TrainingType.FITNESS));
-
-        trainerDao.findAll().get(0).setSpecialization(TrainingType.YOGA);
-
-        Assertions.assertEquals(TrainingType.FITNESS, trainers.get(1L).getSpecialization());
-    }
-
-    @Test
-    @DisplayName("finds a taken username")
-    void findsTakenUsername() {
-        trainers.put(1L, trainer(1L, "Robert", "Taylor", TrainingType.FITNESS));
-
-        Assertions.assertTrue(trainerDao.existsByUsername("Robert.Taylor"));
-    }
-
-    @Test
-    @DisplayName("does not find a free username")
-    void doesNotFindFreeUsername() {
-        trainers.put(1L, trainer(1L, "Robert", "Taylor", TrainingType.FITNESS));
-
-        Assertions.assertFalse(trainerDao.existsByUsername("Robert.Taylor1"));
-    }
-
-    @Test
-    @DisplayName("existsByUsername survives a stored trainer without a username")
-    void handlesNullUsernameInStorage() {
-        trainers.put(1L, Trainer.builder().userID(1L).firstName("Robert").build());
-
-        Assertions.assertFalse(trainerDao.existsByUsername("Robert.Taylor"));
-    }
-
-    @Test
-    @DisplayName("finds an existing id")
-    void findsExistingId() {
-        trainers.put(1L, trainer(1L, "Robert", "Taylor", TrainingType.FITNESS));
-
-        Assertions.assertTrue(trainerDao.existsByID(1L));
-    }
-
-    @Test
-    @DisplayName("does not find a missing id")
-    void doesNotFindMissingId() {
-        Assertions.assertFalse(trainerDao.existsByID(999L));
-    }
-
-    @Test
-    @DisplayName("generateId starts at 1 on empty storage")
-    void generatesFirstId() {
-        Assertions.assertEquals(1L, trainerDao.generateId());
-    }
-
-    @Test
-    @DisplayName("generateId does not reuse gaps between ids")
-    void skipsGapsWhenGeneratingId() {
-        trainers.put(2L, trainer(2L, "Sarah", "Miller", TrainingType.YOGA));
-        trainers.put(7L, trainer(7L, "Nino", "Gelashvili", TrainingType.STRETCHING));
-
-        Assertions.assertEquals(8L, trainerDao.generateId());
+        Assertions.assertEquals("STRETCHING",
+                entityManager.find(Trainer.class, saved.getId()).getSpecialization().getName());
     }
 }

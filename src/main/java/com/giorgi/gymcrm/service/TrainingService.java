@@ -3,21 +3,31 @@ package com.giorgi.gymcrm.service;
 import com.giorgi.gymcrm.dao.TraineeDao;
 import com.giorgi.gymcrm.dao.TrainerDao;
 import com.giorgi.gymcrm.dao.TrainingDao;
+import com.giorgi.gymcrm.dao.TrainingTypeDao;
+import com.giorgi.gymcrm.exception.ProfileNotFoundException;
+import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.model.TrainingType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.List;
+
+import static com.giorgi.gymcrm.util.Validations.requireText;
 
 @Slf4j
 @Service
 public class TrainingService {
+
     private TrainingDao trainingDao;
     private TraineeDao traineeDao;
     private TrainerDao trainerDao;
+    private TrainingTypeDao trainingTypeDao;
+    private AuthenticationService authenticationService;
 
     @Autowired
     public void setTrainingDao(TrainingDao trainingDao) {
@@ -34,70 +44,73 @@ public class TrainingService {
         this.trainerDao = trainerDao;
     }
 
-    public Training createTrainingProfile(long traineeID,
-                                          long trainerID,
-                                          String name,
-                                          TrainingType type,
-                                          LocalDate date,
-                                          long duration) {
-        if (!traineeDao.existsByID(traineeID)) {
-            log.warn("Training creation rejected, trainee with id: {} does not exist", traineeID);
-            throw new IllegalArgumentException("Trainee with id: " + traineeID +" does not exist");
-        }
+    @Autowired
+    public void setTrainingTypeDao(TrainingTypeDao trainingTypeDao) {
+        this.trainingTypeDao = trainingTypeDao;
+    }
 
-        Trainer trainer = trainerDao.findById(trainerID);
+    @Autowired
+    public void setAuthenticationService(AuthenticationService authenticationService) {
+        this.authenticationService = authenticationService;
+    }
 
-        if (trainer == null) {
-            log.warn("Training creation rejected, trainer with id: {} does not exist", trainerID);
-            throw new IllegalArgumentException("Trainer with id: " + trainerID +" does not exist");
-        }
-
-        if (name == null || name.isBlank()) {
-            log.warn("Training creation rejected, training name is missing");
-            throw new IllegalArgumentException("Training name should not be null or blank");
-        }
-
-        if (type == null) {
-            log.warn("Training creation rejected, training type is missing");
-            throw new IllegalArgumentException("Training type should not be null");
-        }
+    @Transactional
+    public Training addTraining(String username, String password,
+                                String traineeUsername, String trainerUsername,
+                                String name, String typeName,
+                                LocalDate date, Long duration) {
+        authenticationService.authenticate(username, password);
+        requireText(traineeUsername, "Trainee username");
+        requireText(trainerUsername, "Trainer username");
+        requireText(name, "Training name");
+        requireText(typeName, "Training type");
 
         if (date == null) {
-            log.warn("Training creation rejected, training date is missing");
-            throw new IllegalArgumentException("Training date should not be null");
+            throw new IllegalArgumentException("Training date must not be null");
+        }
+        if (duration == null || duration <= 0) {
+            throw new IllegalArgumentException("Training duration must be a positive number");
         }
 
-        if (duration <= 0) {
-            log.warn("Training creation rejected, duration must be positive but was: {}", duration);
-            throw new IllegalArgumentException("Training duration should not be zero or negative");
+        Trainee trainee = traineeDao.findByUsername(traineeUsername)
+                .orElseThrow(() -> new ProfileNotFoundException("Trainee not found: " + traineeUsername));
+        Trainer trainer = trainerDao.findByUsername(trainerUsername)
+                .orElseThrow(() -> new ProfileNotFoundException("Trainer not found: " + trainerUsername));
+        TrainingType type = trainingTypeDao.findByName(typeName)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown training type: " + typeName));
+
+        if (!trainer.getSpecialization().getId().equals(type.getId())) {
+            throw new IllegalArgumentException("Training type " + typeName
+                    + " does not match the specialization of trainer " + trainerUsername);
         }
-
-        TrainingType trainersSpecialization = trainer.getSpecialization();
-
-        if (!type.equals(trainersSpecialization)) {
-            log.warn("Training creation rejected, type: {} does not match trainer specialization: {}", type, trainersSpecialization);
-            throw new IllegalArgumentException("Training type: " + type + " does not match trainers specialization: " + trainersSpecialization);
-        }
-
-        long id = trainingDao.generateId();
 
         Training training = Training.builder()
-                .ID(id)
-                .traineeID(traineeID)
-                .trainerID(trainerID)
+                .trainee(trainee)
+                .trainer(trainer)
                 .name(name)
                 .type(type)
                 .date(date)
                 .duration(duration)
                 .build();
 
-        Training savedTraining = trainingDao.save(training);
-        log.info("Created training, id: {}, trainee id: {}, trainer id: {}", savedTraining.getID(), traineeID, trainerID);
-        return savedTraining;
+        trainingDao.save(training);
+        log.info("Added training '{}' for trainee {} with trainer {}", name, traineeUsername, trainerUsername);
+        return training;
     }
 
-    public Training selectTrainingProfile(long id) {
-        log.debug("Selecting training profile, id: {}", id);
-        return trainingDao.findById(id);
+    @Transactional(readOnly = true)
+    public List<Training> getTraineeTrainings(String username, String password,
+                                              LocalDate fromDate, LocalDate toDate,
+                                              String trainerName, String typeName) {
+        authenticationService.authenticate(username, password);
+        return trainingDao.findTraineeTrainings(username, fromDate, toDate, trainerName, typeName);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Training> getTrainerTrainings(String username, String password,
+                                              LocalDate fromDate, LocalDate toDate,
+                                              String traineeName) {
+        authenticationService.authenticate(username, password);
+        return trainingDao.findTrainerTrainings(username, fromDate, toDate, traineeName);
     }
 }

@@ -1,80 +1,60 @@
 package com.giorgi.gymcrm.dao;
 
 import com.giorgi.gymcrm.model.Trainer;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.Optional;
 
 @Slf4j
-@Component
+@Repository
 public class TrainerDaoImpl implements TrainerDao {
-    private Map<Long, Trainer> trainers;
 
-    @Autowired
-    public void setTrainers(Map<Long, Trainer> trainers) {
-        this.trainers = trainers;
-    }
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Override
     public Trainer save(Trainer trainer) {
-        if (trainers.get(trainer.getUserID()) != null) {
-            log.error("Trainer with id: {} already exists", trainer.getUserID());
-            throw new IllegalArgumentException("Trainer with id: " + trainer.getUserID() +" already exists");
-        }
-        trainers.put(trainer.getUserID(), copyOf(trainer));
-        return copyOf(trainer);
+        entityManager.persist(trainer);
+        log.debug("Persisted trainer with id {}", trainer.getId());
+        return trainer;
     }
 
     @Override
     public Trainer update(Trainer trainer) {
-        Trainer existingTrainer = trainers.get(trainer.getUserID());
-        if (existingTrainer != null) {
-            trainers.put(trainer.getUserID(), copyOf(trainer));
-            return copyOf(trainer);
-        } else {
-            log.error("Trainer with id: {} does not exist", trainer.getUserID());
-            throw new IllegalArgumentException("Trainer with id: " + trainer.getUserID() +" does not exist");
-        }
+        return entityManager.merge(trainer);
     }
 
     @Override
-    public Trainer findById(long id) {
-        Trainer trainer = trainers.get(id);
-        return trainer != null ? copyOf(trainer) : null;
+    public Optional<Trainer> findByUsername(String username) {
+        return entityManager.createQuery("""
+                    select t from Trainer t
+                    join fetch t.user u
+                    join fetch t.specialization
+                    where u.username = :username
+                    """, Trainer.class)
+                .setParameter("username", username)
+                .getResultStream()
+                .findFirst();
     }
 
     @Override
-    public List<Trainer> findAll() {
-        return trainers.values()
-                .stream()
-                .map(this::copyOf)
-                .toList();
-    }
-
-    @Override
-    public boolean existsByUsername(String username) {
-        return trainers.values().stream()
-                .anyMatch(t -> Objects.equals(t.getUsername(), username));
-    }
-
-    @Override
-    public boolean existsByID(long id) {
-        return trainers.get(id) != null;
-    }
-
-    @Override
-    public long generateId() {
-        return trainers.keySet()
-                .stream()
-                .max(Long::compareTo)
-                .orElse(0L) + 1;
-    }
-
-    private Trainer copyOf(Trainer trainer) {
-        return trainer.toBuilder().build();
+    public List<Trainer> findNotAssignedToTrainee(String traineeUsername) {
+        return entityManager.createQuery("""
+                    select tr from Trainer tr
+                    join fetch tr.user u
+                    join fetch tr.specialization
+                    where u.isActive = true
+                      and tr not in (
+                          select assigned from Trainee t
+                          join t.trainers assigned
+                          where t.user.username = :username
+                      )
+                    """, Trainer.class)
+                .setParameter("username", traineeUsername)
+                .getResultList();
     }
 }

@@ -2,15 +2,11 @@ package com.giorgi.gymcrm.dao;
 
 import com.giorgi.gymcrm.model.Trainee;
 
-import java.util.List;
+import java.util.Optional;
 
 public interface TraineeDao {
     Trainee save(Trainee trainee);
     Trainee update(Trainee trainee);
-    void delete(long id);
-    Trainee findById(long id);
-    List<Trainee> findAll();
-    boolean existsByUsername(String username);
-    boolean existsByID(long id);
-    long generateId();
+    void delete(Trainee trainee);
+    Optional<Trainee> findByUsername(String username);
 }

@@ -1,7 +1,12 @@
 package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.dao.TraineeDao;
+import com.giorgi.gymcrm.dao.TrainerDao;
+import com.giorgi.gymcrm.exception.AuthenticationException;
+import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.model.Trainee;
+import com.giorgi.gymcrm.model.Trainer;
+import com.giorgi.gymcrm.model.User;
 import com.giorgi.gymcrm.util.CredentialGenerator;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
@@ -16,16 +21,27 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class TraineeServiceTest {
+
     private static final LocalDate DATE_OF_BIRTH = LocalDate.of(1998, 5, 14);
     private static final String ADDRESS = "123 Main St New York";
+    private static final String PASSWORD = "aX7kQ2mN9p";
 
     @Mock
     private TraineeDao traineeDao;
+
+    @Mock
+    private TrainerDao trainerDao;
+
+    @Mock
+    private AuthenticationService authenticationService;
 
     @Mock
     private UsernameResolver usernameResolver;
@@ -36,165 +52,238 @@ class TraineeServiceTest {
     @InjectMocks
     private TraineeService traineeService;
 
-    @Test
-    @DisplayName("creates trainee with generated id, username and password")
-    void createsTraineeProfile() {
-        when(traineeDao.generateId()).thenReturn(1L);
-        when(usernameResolver.generateUsername("John", "Smith")).thenReturn("John.Smith");
-        when(credentialGenerator.generatePassword()).thenReturn("aX7kQ2mN9p");
-        when(traineeDao.save(any(Trainee.class))).thenAnswer(call -> call.getArgument(0));
+    private Trainee john(boolean active) {
+        User user = User.builder()
+                .id(1L)
+                .firstName("John")
+                .lastName("Smith")
+                .username("John.Smith")
+                .password(PASSWORD)
+                .isActive(active)
+                .build();
+        return Trainee.builder()
+                .id(1L)
+                .user(user)
+                .dateOfBirth(DATE_OF_BIRTH)
+                .address(ADDRESS)
+                .build();
+    }
 
-        traineeService.createTraineeProfile("John", "Smith", true, DATE_OF_BIRTH, ADDRESS);
+    private Trainer trainer(String firstName, String lastName) {
+        return Trainer.builder()
+                .user(User.builder().firstName(firstName).lastName(lastName)
+                        .username(firstName + "." + lastName).password("Hj2wE8rT4y").isActive(true).build())
+                .build();
+    }
+
+    @Test
+    @DisplayName("createProfile builds the trainee with a resolved username and generated password")
+    void savesTraineeWithGeneratedCredentials() {
+        when(usernameResolver.generateUsername("John", "Smith")).thenReturn("John.Smith");
+        when(credentialGenerator.generatePassword()).thenReturn(PASSWORD);
+
+        traineeService.createProfile("John", "Smith", DATE_OF_BIRTH, ADDRESS);
 
         ArgumentCaptor<Trainee> captor = ArgumentCaptor.forClass(Trainee.class);
         verify(traineeDao).save(captor.capture());
         Trainee saved = captor.getValue();
 
-        Assertions.assertEquals(1L, saved.getUserID());
-        Assertions.assertEquals("John.Smith", saved.getUsername());
-        Assertions.assertEquals("aX7kQ2mN9p", saved.getPassword());
-        Assertions.assertEquals("John", saved.getFirstName());
-        Assertions.assertEquals("Smith", saved.getLastName());
-        Assertions.assertTrue(saved.isActive());
+        Assertions.assertEquals("John.Smith", saved.getUser().getUsername());
+        Assertions.assertEquals(PASSWORD, saved.getUser().getPassword());
+        Assertions.assertTrue(saved.getUser().isActive());
+        Assertions.assertEquals("John", saved.getUser().getFirstName());
+        Assertions.assertEquals("Smith", saved.getUser().getLastName());
         Assertions.assertEquals(DATE_OF_BIRTH, saved.getDateOfBirth());
         Assertions.assertEquals(ADDRESS, saved.getAddress());
     }
 
-    @Test
-    @DisplayName("creates trainee without date of birth and address")
-    void createsTraineeWithoutOptionalFields() {
-        when(traineeDao.generateId()).thenReturn(1L);
-        when(usernameResolver.generateUsername("John", "Smith")).thenReturn("John.Smith");
-        when(credentialGenerator.generatePassword()).thenReturn("aX7kQ2mN9p");
-        when(traineeDao.save(any(Trainee.class))).thenAnswer(call -> call.getArgument(0));
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "   "})
+    @DisplayName("createProfile rejects a missing first name")
+    void rejectsMissingFirstName(String firstName) {
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> traineeService.createProfile(firstName, "Smith", DATE_OF_BIRTH, ADDRESS));
 
-        traineeService.createTraineeProfile("John", "Smith", false, null, null);
-
-        ArgumentCaptor<Trainee> captor = ArgumentCaptor.forClass(Trainee.class);
-        verify(traineeDao).save(captor.capture());
-        Trainee saved = captor.getValue();
-
-        Assertions.assertNull(saved.getDateOfBirth());
-        Assertions.assertNull(saved.getAddress());
-        Assertions.assertFalse(saved.isActive());
-    }
-
-    @Test
-    @DisplayName("create returns what the dao saved")
-    void createReturnsDaoResult() {
-        when(traineeDao.generateId()).thenReturn(1L);
-        when(usernameResolver.generateUsername("John", "Smith")).thenReturn("John.Smith");
-        when(credentialGenerator.generatePassword()).thenReturn("aX7kQ2mN9p");
-        Trainee persisted = Trainee.builder().userID(1L).username("John.Smith").build();
-        when(traineeDao.save(any(Trainee.class))).thenReturn(persisted);
-
-        Trainee created = traineeService.createTraineeProfile("John", "Smith", true, DATE_OF_BIRTH, ADDRESS);
-
-        Assertions.assertSame(persisted, created);
+        verifyNoInteractions(traineeDao);
     }
 
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {"", "   "})
-    @DisplayName("create rejects a missing first name")
-    void rejectsBlankFirstName(String firstName) {
+    @DisplayName("createProfile rejects a missing last name")
+    void rejectsMissingLastName(String lastName) {
         Assertions.assertThrows(IllegalArgumentException.class,
-                () -> traineeService.createTraineeProfile(firstName, "Smith", true, DATE_OF_BIRTH, ADDRESS));
-    }
-
-    @ParameterizedTest
-    @NullSource
-    @ValueSource(strings = {"", "   "})
-    @DisplayName("create rejects a missing last name")
-    void rejectsBlankLastName(String lastName) {
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> traineeService.createTraineeProfile("John", lastName, true, DATE_OF_BIRTH, ADDRESS));
-    }
-
-    @Test
-    @DisplayName("create does not touch the dao when validation fails")
-    void skipsStorageWhenValidationFails() {
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> traineeService.createTraineeProfile(null, "Smith", true, DATE_OF_BIRTH, ADDRESS));
-
-        verifyNoInteractions(traineeDao, usernameResolver, credentialGenerator);
-    }
-
-    @Test
-    @DisplayName("update saves new details but keeps stored username and password")
-    void updatesTraineeProfile() {
-        Trainee stored = Trainee.builder().userID(1L).firstName("John").lastName("Smith")
-                .username("John.Smith").password("aX7kQ2mN9p").build();
-        Trainee changes = Trainee.builder().userID(1L).firstName("Johnny").lastName("Smith")
-                .username("Someone.Else").password("newPassword").address("45 Oak Avenue").build();
-        when(traineeDao.findById(1L)).thenReturn(stored);
-        when(traineeDao.update(any(Trainee.class))).thenAnswer(call -> call.getArgument(0));
-
-        Trainee updated = traineeService.updateTraineeProfile(changes);
-
-        Assertions.assertEquals("Johnny", updated.getFirstName());
-        Assertions.assertEquals("45 Oak Avenue", updated.getAddress());
-        Assertions.assertEquals("John.Smith", updated.getUsername());
-        Assertions.assertEquals("aX7kQ2mN9p", updated.getPassword());
-    }
-
-    @Test
-    @DisplayName("update rejects an unknown trainee")
-    void rejectsUnknownTraineeOnUpdate() {
-        Trainee unknown = Trainee.builder().userID(99L).firstName("Ana").lastName("Kapanadze").build();
-        when(traineeDao.findById(99L)).thenReturn(null);
-
-        Assertions.assertThrows(IllegalArgumentException.class, () -> traineeService.updateTraineeProfile(unknown));
-        verify(traineeDao, never()).update(any(Trainee.class));
-    }
-
-    @ParameterizedTest
-    @NullSource
-    @ValueSource(strings = {"", "   "})
-    @DisplayName("update rejects a missing first name")
-    void rejectsBlankFirstNameOnUpdate(String firstName) {
-        Trainee stored = Trainee.builder().userID(1L).firstName("John").lastName("Smith").build();
-        Trainee changes = Trainee.builder().userID(1L).firstName(firstName).lastName("Smith").build();
-        when(traineeDao.findById(1L)).thenReturn(stored);
-
-        Assertions.assertThrows(IllegalArgumentException.class, () -> traineeService.updateTraineeProfile(changes));
-        verify(traineeDao, never()).update(any(Trainee.class));
-    }
-
-    @Test
-    @DisplayName("update rejects a null trainee")
-    void rejectsNullTraineeOnUpdate() {
-        Assertions.assertThrows(IllegalArgumentException.class, () -> traineeService.updateTraineeProfile(null));
+                () -> traineeService.createProfile("John", lastName, DATE_OF_BIRTH, ADDRESS));
 
         verifyNoInteractions(traineeDao);
     }
 
     @Test
-    @DisplayName("delete removes an existing trainee")
-    void deletesTraineeProfile() {
-        when(traineeDao.existsByID(1L)).thenReturn(true);
+    @DisplayName("selectByUsername authenticates first and returns the trainee")
+    void selectsTraineeAfterAuthentication() {
+        Trainee john = john(true);
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
 
-        traineeService.deleteTraineeProfile(1L);
+        Trainee found = traineeService.selectByUsername("John.Smith", PASSWORD);
 
-        verify(traineeDao).delete(1L);
+        Assertions.assertSame(john, found);
+        verify(authenticationService).authenticate("John.Smith", PASSWORD);
     }
 
     @Test
-    @DisplayName("delete does nothing for an unknown id")
-    void skipsDeleteForUnknownId() {
-        when(traineeDao.existsByID(99L)).thenReturn(false);
+    @DisplayName("selectByUsername throws when the trainee does not exist")
+    void throwsWhenTraineeMissing() {
+        when(traineeDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
 
-        traineeService.deleteTraineeProfile(99L);
-
-        verify(traineeDao, never()).delete(anyLong());
+        Assertions.assertThrows(ProfileNotFoundException.class,
+                () -> traineeService.selectByUsername("Nobody.Here", PASSWORD));
     }
 
     @Test
-    @DisplayName("select returns the trainee from the dao")
-    void selectsTraineeProfile() {
-        Trainee john = Trainee.builder().userID(1L).firstName("John").build();
-        when(traineeDao.findById(1L)).thenReturn(john);
+    @DisplayName("changePassword stores the new password")
+    void changesPassword() {
+        Trainee john = john(true);
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
 
-        Assertions.assertSame(john, traineeService.selectTraineeProfile(1L));
+        traineeService.changePassword("John.Smith", PASSWORD, "newPassword1");
+
+        Assertions.assertEquals("newPassword1", john.getUser().getPassword());
+        verify(traineeDao).update(john);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "   "})
+    @DisplayName("changePassword rejects a blank new password")
+    void rejectsBlankNewPassword(String newPassword) {
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> traineeService.changePassword("John.Smith", PASSWORD, newPassword));
+
+        verify(traineeDao, never()).update(any(Trainee.class));
+    }
+
+    @Test
+    @DisplayName("updateProfile overwrites the name, date of birth and address")
+    void updatesProfileFields() {
+        Trainee john = john(true);
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.update(john)).thenReturn(john);
+
+        Trainee updated = traineeService.updateProfile("John.Smith", PASSWORD,
+                "Johnny", "Smithson", LocalDate.of(2000, 1, 1), "456 Park Avenue Boston");
+
+        Assertions.assertEquals("Johnny", updated.getUser().getFirstName());
+        Assertions.assertEquals("Smithson", updated.getUser().getLastName());
+        Assertions.assertEquals(LocalDate.of(2000, 1, 1), updated.getDateOfBirth());
+        Assertions.assertEquals("456 Park Avenue Boston", updated.getAddress());
+    }
+
+    @Test
+    @DisplayName("activate throws when the trainee is already active")
+    void activateThrowsWhenAlreadyActive() {
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john(true)));
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> traineeService.activate("John.Smith", PASSWORD));
+
+        verify(traineeDao, never()).update(any(Trainee.class));
+    }
+
+    @Test
+    @DisplayName("deactivate clears the active flag")
+    void deactivateClearsActiveFlag() {
+        Trainee john = john(true);
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+
+        traineeService.deactivate("John.Smith", PASSWORD);
+
+        Assertions.assertFalse(john.getUser().isActive());
+        verify(traineeDao).update(john);
+    }
+
+    @Test
+    @DisplayName("deleteByUsername passes the loaded trainee to the dao")
+    void deletesLoadedTrainee() {
+        Trainee john = john(true);
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+
+        traineeService.deleteByUsername("John.Smith", PASSWORD);
+
+        verify(traineeDao).delete(john);
+    }
+
+    @Test
+    @DisplayName("updateTrainers replaces the whole trainer set")
+    void updateTrainersReplacesTheSet() {
+        Trainee john = john(true);
+        john.getTrainers().add(trainer("Laura", "Davis"));
+        Trainer sarah = trainer("Sarah", "Miller");
+        Trainer robert = trainer("Robert", "Taylor");
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
+        when(trainerDao.findByUsername("Robert.Taylor")).thenReturn(Optional.of(robert));
+        when(traineeDao.update(john)).thenReturn(john);
+
+        Trainee updated = traineeService.updateTrainers("John.Smith", PASSWORD,
+                Set.of("Sarah.Miller", "Robert.Taylor"));
+
+        Assertions.assertEquals(2, updated.getTrainers().size());
+        Assertions.assertTrue(updated.getTrainers().containsAll(Set.of(sarah, robert)));
+    }
+
+    @Test
+    @DisplayName("updateTrainers throws when one trainer username is unknown")
+    void updateTrainersThrowsForUnknownTrainer() {
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john(true)));
+        when(trainerDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
+
+        Assertions.assertThrows(ProfileNotFoundException.class,
+                () -> traineeService.updateTrainers("John.Smith", PASSWORD, Set.of("Nobody.Here")));
+
+        verify(traineeDao, never()).update(any(Trainee.class));
+    }
+
+    @Test
+    @DisplayName("a failed authentication stops the operation before the dao is touched")
+    void authenticationFailureStopsTheOperation() {
+        doThrow(new AuthenticationException("Invalid username or password"))
+                .when(authenticationService).authenticate("John.Smith", "wrongPassword");
+
+        Assertions.assertThrows(AuthenticationException.class,
+                () -> traineeService.selectByUsername("John.Smith", "wrongPassword"));
+
+        verifyNoInteractions(traineeDao);
+    }
+
+    @Test
+    @DisplayName("activate sets the flag on an inactive trainee")
+    void activateSetsActiveFlag() {
+        Trainee john = john(false);
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+
+        traineeService.activate("John.Smith", PASSWORD);
+
+        Assertions.assertTrue(john.getUser().isActive());
+        verify(traineeDao).update(john);
+    }
+
+    @Test
+    @DisplayName("updateTrainers rejects a null set")
+    void updateTrainersRejectsNullSet() {
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> traineeService.updateTrainers("John.Smith", PASSWORD, null));
+
+        verify(traineeDao, never()).update(any(Trainee.class));
+    }
+
+    @Test
+    @DisplayName("findUnassignedTrainers returns what the trainer dao gives back")
+    void findsUnassignedTrainers() {
+        List<Trainer> unassigned = List.of(trainer("Sarah", "Miller"));
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john(true)));
+        when(trainerDao.findNotAssignedToTrainee("John.Smith")).thenReturn(unassigned);
+
+        Assertions.assertSame(unassigned, traineeService.findUnassignedTrainers("John.Smith", PASSWORD));
     }
 }

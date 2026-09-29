@@ -1,88 +1,46 @@
 package com.giorgi.gymcrm.dao;
 
 import com.giorgi.gymcrm.model.Trainee;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Repository;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.Optional;
 
 @Slf4j
-@Component
+@Repository
 public class TraineeDaoImpl implements TraineeDao {
-    private Map<Long, Trainee> trainees;
 
-    @Autowired
-    public void setTrainees(Map<Long, Trainee> trainees) {
-        this.trainees = trainees;
-    }
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Override
     public Trainee save(Trainee trainee) {
-        if (trainees.get(trainee.getUserID()) != null) {
-            log.error("Trainee with id: {} already exists", trainee.getUserID());
-            throw new IllegalArgumentException("Trainee with id: " + trainee.getUserID() +" already exists");
-        }
-        trainees.put(trainee.getUserID(), copyOf(trainee));
-        return copyOf(trainee);
+        entityManager.persist(trainee);
+        log.debug("Persisted trainee with id {}", trainee.getId());
+        return trainee;
     }
 
     @Override
     public Trainee update(Trainee trainee) {
-        Trainee existingTrainee = trainees.get(trainee.getUserID());
-        if (existingTrainee != null) {
-            trainees.put(trainee.getUserID(), copyOf(trainee));
-            return copyOf(trainee);
-        } else {
-            log.error("Trainee with id: {} does not exist", trainee.getUserID());
-            throw new IllegalArgumentException("Trainee with id: " + trainee.getUserID() +" does not exist");
-        }
+        return entityManager.merge(trainee);
     }
 
     @Override
-    public void delete(long id) {
-        if (trainees.remove(id) == null) {
-            log.warn("Trainee with id: {} was not found, nothing to delete", id);
-        }
+    public void delete(Trainee trainee) {
+        entityManager.remove(entityManager.contains(trainee) ? trainee : entityManager.merge(trainee));
     }
 
     @Override
-    public Trainee findById(long id) {
-        Trainee trainee = trainees.get(id);
-        return trainee != null ? copyOf(trainee) : null;
-    }
-
-    @Override
-    public List<Trainee> findAll() {
-        return trainees.values()
-                .stream()
-                .map(this::copyOf)
-                .toList();
-    }
-
-    @Override
-    public boolean existsByUsername(String username) {
-        return trainees.values()
-                .stream()
-                .anyMatch(t -> Objects.equals(t.getUsername(), username));
-    }
-
-    @Override
-    public boolean existsByID(long id) {
-        return trainees.get(id) != null;
-    }
-
-    @Override
-    public long generateId() {
-        return trainees.keySet()
-                .stream()
-                .max(Long::compareTo)
-                .orElse(0L) + 1;
-    }
-
-    private Trainee copyOf(Trainee trainee) {
-        return trainee.toBuilder().build();
+    public Optional<Trainee> findByUsername(String username) {
+        return entityManager.createQuery("""
+                    select t from Trainee t
+                    join fetch t.user u
+                    where u.username = :username
+                    """, Trainee.class)
+                .setParameter("username", username)
+                .getResultStream()
+                .findFirst();
     }
 }

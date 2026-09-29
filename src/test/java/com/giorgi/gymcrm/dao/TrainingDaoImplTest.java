@@ -1,140 +1,190 @@
 package com.giorgi.gymcrm.dao;
 
+import com.giorgi.gymcrm.model.Trainee;
+import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.model.TrainingType;
+import com.giorgi.gymcrm.model.User;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 
+@SpringBootTest
+@Transactional
 class TrainingDaoImplTest {
-    private Map<Long, Training> trainings;
-    private TrainingDaoImpl trainingDao;
 
-    @BeforeEach
-    void setUp() {
-        trainings = new HashMap<>();
-        trainingDao = new TrainingDaoImpl();
-        trainingDao.setTrainings(trainings);
+    private static final LocalDate AUGUST_1 = LocalDate.of(2026, 8, 1);
+    private static final LocalDate AUGUST_10 = LocalDate.of(2026, 8, 10);
+    private static final LocalDate AUGUST_15 = LocalDate.of(2026, 8, 15);
+    private static final LocalDate AUGUST_20 = LocalDate.of(2026, 8, 20);
+    private static final LocalDate AUGUST_31 = LocalDate.of(2026, 8, 31);
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Autowired
+    private TrainingDao trainingDao;
+
+    private TrainingType trainingType(String name) {
+        return entityManager
+                .createQuery("select tt from TrainingType tt where tt.name = :name", TrainingType.class)
+                .setParameter("name", name)
+                .getSingleResult();
     }
 
-    private Training training(long id, String name, TrainingType type) {
+    private User user(String firstName, String lastName) {
+        return User.builder()
+                .firstName(firstName)
+                .lastName(lastName)
+                .username(firstName + "." + lastName)
+                .password("aX7kQ2mN9p")
+                .isActive(true)
+                .build();
+    }
+
+    private Trainee trainee(String firstName, String lastName) {
+        Trainee trainee = Trainee.builder().user(user(firstName, lastName)).build();
+        entityManager.persist(trainee);
+        return trainee;
+    }
+
+    private Trainer trainer(String firstName, String lastName, String specialization) {
+        Trainer trainer = Trainer.builder()
+                .user(user(firstName, lastName))
+                .specialization(trainingType(specialization))
+                .build();
+        entityManager.persist(trainer);
+        return trainer;
+    }
+
+    private Training training(Trainee trainee, Trainer trainer, String name, LocalDate date) {
         return Training.builder()
-                .ID(id)
-                .traineeID(1L)
-                .trainerID(1L)
+                .trainee(trainee)
+                .trainer(trainer)
                 .name(name)
-                .type(type)
-                .date(LocalDate.of(2026, 8, 1))
+                .type(trainer.getSpecialization())
+                .date(date)
                 .duration(60L)
                 .build();
     }
 
-    @Test
-    @DisplayName("saves training and returns it back")
-    void savesTrainingToStorage() {
-        Training saved = trainingDao.save(training(1L, "Morning Fitness Session", TrainingType.FITNESS));
+    private List<String> names(List<Training> trainings) {
+        return trainings.stream().map(Training::getName).toList();
+    }
 
-        Assertions.assertEquals("Morning Fitness Session", trainings.get(1L).getName());
-        Assertions.assertEquals(1L, saved.getID());
-        Assertions.assertEquals(TrainingType.FITNESS, saved.getType());
-        Assertions.assertEquals(60L, saved.getDuration());
+    @BeforeEach
+    void setUp() {
+        Trainee john = trainee("John", "Smith");
+        Trainee emily = trainee("Emily", "Johnson");
+        Trainer sarah = trainer("Sarah", "Miller", "YOGA");
+        Trainer robert = trainer("Robert", "Taylor", "FITNESS");
+
+        entityManager.persist(training(john, sarah, "Morning Yoga", AUGUST_1));
+        entityManager.persist(training(john, robert, "Strength Session", AUGUST_15));
+        entityManager.persist(training(emily, sarah, "Evening Yoga", AUGUST_20));
+        entityManager.flush();
+        entityManager.clear();
     }
 
     @Test
-    @DisplayName("save throws on duplicate id and keeps the old training")
-    void throwsOnDuplicateId() {
-        trainings.put(1L, training(1L, "Morning Fitness Session", TrainingType.FITNESS));
+    @DisplayName("save stores the training")
+    void savesTraining() {
+        Trainee ana = trainee("Ana", "Kapanadze");
+        Trainer giorgi = trainer("Giorgi", "Beridze", "ZUMBA");
 
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingDao.save(training(1L, "Beginner Yoga Class", TrainingType.YOGA)));
-        Assertions.assertEquals("Morning Fitness Session", trainings.get(1L).getName());
+        Training saved = trainingDao.save(training(ana, giorgi, "Zumba Party", AUGUST_20));
+        entityManager.flush();
+        entityManager.clear();
+
+        Training found = entityManager.find(Training.class, saved.getId());
+        Assertions.assertNotNull(found);
+        Assertions.assertEquals("Zumba Party", found.getName());
+        Assertions.assertEquals(60L, found.getDuration());
+        Assertions.assertEquals("ZUMBA", found.getType().getName());
     }
 
     @Test
-    @DisplayName("save does not keep the caller's object")
-    void saveDoesNotKeepCallerObject() {
-        Training morning = training(1L, "Morning Fitness Session", TrainingType.FITNESS);
-        trainingDao.save(morning);
+    @DisplayName("findTraineeTrainings without filters returns only that trainee's trainings")
+    void findsAllTraineeTrainings() {
+        List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", null, null, null, null);
 
-        morning.setDuration(999L);
-
-        Assertions.assertEquals(60L, trainings.get(1L).getDuration());
+        Assertions.assertEquals(2, trainings.size());
+        Assertions.assertEquals(List.of("Morning Yoga", "Strength Session"), names(trainings));
     }
 
     @Test
-    @DisplayName("editing what save returns does not touch storage")
-    void saveResultIsDetached() {
-        Training saved = trainingDao.save(training(1L, "Morning Fitness Session", TrainingType.FITNESS));
+    @DisplayName("findTraineeTrainings drops trainings before fromDate")
+    void filtersTraineeTrainingsByFromDate() {
+        List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", AUGUST_10, null, null, null);
 
-        saved.setDuration(999L);
-
-        Assertions.assertEquals(60L, trainings.get(1L).getDuration());
+        Assertions.assertEquals(List.of("Strength Session"), names(trainings));
     }
 
     @Test
-    @DisplayName("finds training by id")
-    void findsTrainingById() {
-        trainings.put(3L, training(3L, "Zumba Cardio Blast", TrainingType.ZUMBA));
+    @DisplayName("findTraineeTrainings drops trainings after toDate")
+    void filtersTraineeTrainingsByToDate() {
+        List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", null, AUGUST_10, null, null);
 
-        Training found = trainingDao.findById(3L);
-
-        Assertions.assertEquals("Zumba Cardio Blast", found.getName());
-        Assertions.assertEquals(TrainingType.ZUMBA, found.getType());
+        Assertions.assertEquals(List.of("Morning Yoga"), names(trainings));
     }
 
     @Test
-    @DisplayName("findById returns null for unknown id")
-    void returnsNullForUnknownId() {
-        Assertions.assertNull(trainingDao.findById(999L));
+    @DisplayName("findTraineeTrainings matches the trainer first name ignoring case")
+    void filtersTraineeTrainingsByTrainerName() {
+        List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", null, null, "sArAh", null);
+
+        Assertions.assertEquals(List.of("Morning Yoga"), names(trainings));
     }
 
     @Test
-    @DisplayName("editing what findById returns does not touch storage")
-    void findByIdResultIsDetached() {
-        trainings.put(1L, training(1L, "Morning Fitness Session", TrainingType.FITNESS));
+    @DisplayName("findTraineeTrainings matches the training type")
+    void filtersTraineeTrainingsByType() {
+        List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", null, null, null, "FITNESS");
 
-        Training found = trainingDao.findById(1L);
-        found.setName("Edited");
-
-        Assertions.assertEquals("Morning Fitness Session", trainings.get(1L).getName());
+        Assertions.assertEquals(List.of("Strength Session"), names(trainings));
     }
 
     @Test
-    @DisplayName("findAll returns every training")
-    void findAllReturnsEveryTraining() {
-        trainings.put(1L, training(1L, "Morning Fitness Session", TrainingType.FITNESS));
-        trainings.put(2L, training(2L, "Beginner Yoga Class", TrainingType.YOGA));
+    @DisplayName("findTraineeTrainings applies every filter together")
+    void filtersTraineeTrainingsByEverythingAtOnce() {
+        List<Training> trainings = trainingDao.findTraineeTrainings(
+                "John.Smith", AUGUST_1, AUGUST_31, "robert", "FITNESS");
 
-        Assertions.assertEquals(2, trainingDao.findAll().size());
+        Assertions.assertEquals(List.of("Strength Session"), names(trainings));
     }
 
     @Test
-    @DisplayName("editing what findAll returns does not touch storage")
-    void findAllResultsAreDetached() {
-        trainings.put(1L, training(1L, "Morning Fitness Session", TrainingType.FITNESS));
+    @DisplayName("findTrainerTrainings without filters returns every training of that trainer")
+    void findsAllTrainerTrainings() {
+        List<Training> trainings = trainingDao.findTrainerTrainings("Sarah.Miller", null, null, null);
 
-        trainingDao.findAll().get(0).setName("Edited");
-
-        Assertions.assertEquals("Morning Fitness Session", trainings.get(1L).getName());
+        Assertions.assertEquals(2, trainings.size());
+        Assertions.assertEquals(List.of("Morning Yoga", "Evening Yoga"), names(trainings));
     }
 
     @Test
-    @DisplayName("generateId starts at 1 on empty storage")
-    void generatesFirstId() {
-        Assertions.assertEquals(1L, trainingDao.generateId());
+    @DisplayName("findTrainerTrainings keeps only trainings inside the date range")
+    void filtersTrainerTrainingsByDateRange() {
+        List<Training> trainings = trainingDao.findTrainerTrainings(
+                "Sarah.Miller", AUGUST_15, AUGUST_31, null);
+
+        Assertions.assertEquals(List.of("Evening Yoga"), names(trainings));
     }
 
     @Test
-    @DisplayName("generateId does not reuse gaps between ids")
-    void skipsGapsWhenGeneratingId() {
-        trainings.put(1L, training(1L, "Morning Fitness Session", TrainingType.FITNESS));
-        trainings.put(4L, training(4L, "Full Body Fitness", TrainingType.FITNESS));
+    @DisplayName("findTrainerTrainings matches the trainee first name")
+    void filtersTrainerTrainingsByTraineeName() {
+        List<Training> trainings = trainingDao.findTrainerTrainings("Sarah.Miller", null, null, "emily");
 
-        Assertions.assertEquals(5L, trainingDao.generateId());
+        Assertions.assertEquals(List.of("Evening Yoga"), names(trainings));
     }
 }

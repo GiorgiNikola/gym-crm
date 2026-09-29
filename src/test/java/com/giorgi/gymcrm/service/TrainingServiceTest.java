@@ -3,9 +3,13 @@ package com.giorgi.gymcrm.service;
 import com.giorgi.gymcrm.dao.TraineeDao;
 import com.giorgi.gymcrm.dao.TrainerDao;
 import com.giorgi.gymcrm.dao.TrainingDao;
+import com.giorgi.gymcrm.dao.TrainingTypeDao;
+import com.giorgi.gymcrm.exception.ProfileNotFoundException;
+import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.model.TrainingType;
+import com.giorgi.gymcrm.model.User;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,16 +21,19 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
 
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class TrainingServiceTest {
-    private static final long TRAINEE_ID = 1L;
-    private static final long TRAINER_ID = 2L;
-    private static final LocalDate TRAINING_DATE = LocalDate.of(2026, 8, 1);
+
+    private static final LocalDate DATE = LocalDate.of(2026, 8, 1);
+    private static final String PASSWORD = "aX7kQ2mN9p";
 
     @Mock
     private TrainingDao trainingDao;
@@ -37,140 +44,162 @@ class TrainingServiceTest {
     @Mock
     private TrainerDao trainerDao;
 
+    @Mock
+    private TrainingTypeDao trainingTypeDao;
+
+    @Mock
+    private AuthenticationService authenticationService;
+
     @InjectMocks
     private TrainingService trainingService;
 
-    private Trainer yogaTrainer() {
-        return Trainer.builder().userID(TRAINER_ID).specialization(TrainingType.YOGA).build();
+    // TrainingType is immutable with no setters, so the id goes in by reflection
+    private TrainingType trainingType(long id) {
+        TrainingType type = new TrainingType();
+        ReflectionTestUtils.setField(type, "id", id);
+        return type;
+    }
+
+    private Trainee john() {
+        return Trainee.builder()
+                .id(1L)
+                .user(User.builder().firstName("John").lastName("Smith")
+                        .username("John.Smith").password(PASSWORD).isActive(true).build())
+                .build();
+    }
+
+    private Trainer sarah(TrainingType specialization) {
+        return Trainer.builder()
+                .id(1L)
+                .user(User.builder().firstName("Sarah").lastName("Miller")
+                        .username("Sarah.Miller").password("Hj2wE8rT4y").isActive(true).build())
+                .specialization(specialization)
+                .build();
     }
 
     @Test
-    @DisplayName("creates training with a generated id")
-    void createsTrainingProfile() {
-        when(traineeDao.existsByID(TRAINEE_ID)).thenReturn(true);
-        when(trainerDao.findById(TRAINER_ID)).thenReturn(yogaTrainer());
-        when(trainingDao.generateId()).thenReturn(7L);
-        when(trainingDao.save(any(Training.class))).thenAnswer(call -> call.getArgument(0));
+    @DisplayName("addTraining saves the training with the resolved trainee, trainer and type")
+    void addsTrainingWithResolvedEntities() {
+        TrainingType yoga = trainingType(2L);
+        Trainee john = john();
+        Trainer sarah = sarah(yoga);
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
+        when(trainingTypeDao.findByName("YOGA")).thenReturn(Optional.of(yoga));
 
-        trainingService.createTrainingProfile(
-                TRAINEE_ID, TRAINER_ID, "Beginner Yoga Class", TrainingType.YOGA, TRAINING_DATE, 45L);
+        trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
+                "Morning Yoga", "YOGA", DATE, 60L);
 
         ArgumentCaptor<Training> captor = ArgumentCaptor.forClass(Training.class);
         verify(trainingDao).save(captor.capture());
         Training saved = captor.getValue();
 
-        Assertions.assertEquals(7L, saved.getID());
-        Assertions.assertEquals(TRAINEE_ID, saved.getTraineeID());
-        Assertions.assertEquals(TRAINER_ID, saved.getTrainerID());
-        Assertions.assertEquals("Beginner Yoga Class", saved.getName());
-        Assertions.assertEquals(TrainingType.YOGA, saved.getType());
-        Assertions.assertEquals(TRAINING_DATE, saved.getDate());
-        Assertions.assertEquals(45L, saved.getDuration());
+        Assertions.assertSame(john, saved.getTrainee());
+        Assertions.assertSame(sarah, saved.getTrainer());
+        Assertions.assertSame(yoga, saved.getType());
+        Assertions.assertEquals("Morning Yoga", saved.getName());
+        Assertions.assertEquals(DATE, saved.getDate());
+        Assertions.assertEquals(60L, saved.getDuration());
     }
 
     @Test
-    @DisplayName("create returns what the dao saved")
-    void createReturnsDaoResult() {
-        when(traineeDao.existsByID(TRAINEE_ID)).thenReturn(true);
-        when(trainerDao.findById(TRAINER_ID)).thenReturn(yogaTrainer());
-        when(trainingDao.generateId()).thenReturn(7L);
-        Training persisted = Training.builder().ID(7L).name("Beginner Yoga Class").build();
-        when(trainingDao.save(any(Training.class))).thenReturn(persisted);
+    @DisplayName("addTraining throws for an unknown trainee")
+    void throwsWhenTraineeMissing() {
+        when(traineeDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
 
-        Training created = trainingService.createTrainingProfile(
-                TRAINEE_ID, TRAINER_ID, "Beginner Yoga Class", TrainingType.YOGA, TRAINING_DATE, 45L);
+        Assertions.assertThrows(ProfileNotFoundException.class,
+                () -> trainingService.addTraining("John.Smith", PASSWORD, "Nobody.Here", "Sarah.Miller",
+                        "Morning Yoga", "YOGA", DATE, 60L));
 
-        Assertions.assertSame(persisted, created);
-    }
-
-    @Test
-    @DisplayName("create rejects an unknown trainee")
-    void rejectsUnknownTrainee() {
-        when(traineeDao.existsByID(TRAINEE_ID)).thenReturn(false);
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.createTrainingProfile(
-                        TRAINEE_ID, TRAINER_ID, "Beginner Yoga Class", TrainingType.YOGA, TRAINING_DATE, 45L));
         verifyNoInteractions(trainingDao);
     }
 
     @Test
-    @DisplayName("create rejects an unknown trainer")
-    void rejectsUnknownTrainer() {
-        when(traineeDao.existsByID(TRAINEE_ID)).thenReturn(true);
-        when(trainerDao.findById(TRAINER_ID)).thenReturn(null);
+    @DisplayName("addTraining throws for an unknown trainer")
+    void throwsWhenTrainerMissing() {
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john()));
+        when(trainerDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
+
+        Assertions.assertThrows(ProfileNotFoundException.class,
+                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Nobody.Here",
+                        "Morning Yoga", "YOGA", DATE, 60L));
+
+        verifyNoInteractions(trainingDao);
+    }
+
+    @Test
+    @DisplayName("addTraining throws for an unknown training type")
+    void throwsForUnknownTrainingType() {
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john()));
+        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah(trainingType(2L))));
+        when(trainingTypeDao.findByName("PILATES")).thenReturn(Optional.empty());
 
         Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.createTrainingProfile(
-                        TRAINEE_ID, TRAINER_ID, "Beginner Yoga Class", TrainingType.YOGA, TRAINING_DATE, 45L));
+                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
+                        "Morning Yoga", "PILATES", DATE, 60L));
+
+        verifyNoInteractions(trainingDao);
+    }
+
+    @Test
+    @DisplayName("addTraining rejects a null date")
+    void rejectsNullDate() {
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
+                        "Morning Yoga", "YOGA", null, 60L));
+
         verifyNoInteractions(trainingDao);
     }
 
     @ParameterizedTest
     @NullSource
-    @ValueSource(strings = {"", "   "})
-    @DisplayName("create rejects a missing training name")
-    void rejectsBlankName(String name) {
-        when(traineeDao.existsByID(TRAINEE_ID)).thenReturn(true);
-        when(trainerDao.findById(TRAINER_ID)).thenReturn(yogaTrainer());
-
+    @ValueSource(longs = {0L, -45L})
+    @DisplayName("addTraining rejects a duration that is not positive")
+    void rejectsInvalidDuration(Long duration) {
         Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.createTrainingProfile(
-                        TRAINEE_ID, TRAINER_ID, name, TrainingType.YOGA, TRAINING_DATE, 45L));
-    }
+                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
+                        "Morning Yoga", "YOGA", DATE, duration));
 
-    @Test
-    @DisplayName("create rejects a null training type")
-    void rejectsNullType() {
-        when(traineeDao.existsByID(TRAINEE_ID)).thenReturn(true);
-        when(trainerDao.findById(TRAINER_ID)).thenReturn(yogaTrainer());
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.createTrainingProfile(
-                        TRAINEE_ID, TRAINER_ID, "Beginner Yoga Class", null, TRAINING_DATE, 45L));
-    }
-
-    @Test
-    @DisplayName("create rejects a null training date")
-    void rejectsNullDate() {
-        when(traineeDao.existsByID(TRAINEE_ID)).thenReturn(true);
-        when(trainerDao.findById(TRAINER_ID)).thenReturn(yogaTrainer());
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.createTrainingProfile(
-                        TRAINEE_ID, TRAINER_ID, "Beginner Yoga Class", TrainingType.YOGA, null, 45L));
-    }
-
-    @ParameterizedTest
-    @ValueSource(longs = {0L, -1L, -45L})
-    @DisplayName("create rejects a duration that is not positive")
-    void rejectsNonPositiveDuration(long duration) {
-        when(traineeDao.existsByID(TRAINEE_ID)).thenReturn(true);
-        when(trainerDao.findById(TRAINER_ID)).thenReturn(yogaTrainer());
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.createTrainingProfile(
-                        TRAINEE_ID, TRAINER_ID, "Beginner Yoga Class", TrainingType.YOGA, TRAINING_DATE, duration));
-    }
-
-    @Test
-    @DisplayName("create rejects a type the trainer does not teach")
-    void rejectsTypeOutsideTrainerSpecialization() {
-        when(traineeDao.existsByID(TRAINEE_ID)).thenReturn(true);
-        when(trainerDao.findById(TRAINER_ID)).thenReturn(yogaTrainer());
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.createTrainingProfile(
-                        TRAINEE_ID, TRAINER_ID, "Zumba Cardio Blast", TrainingType.ZUMBA, TRAINING_DATE, 50L));
         verifyNoInteractions(trainingDao);
     }
 
     @Test
-    @DisplayName("select returns the training from the dao")
-    void selectsTrainingProfile() {
-        Training yoga = Training.builder().ID(7L).name("Beginner Yoga Class").build();
-        when(trainingDao.findById(7L)).thenReturn(yoga);
+    @DisplayName("addTraining throws when the type does not match the trainer's specialization")
+    void throwsWhenTypeDoesNotMatchSpecialization() {
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john()));
+        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah(trainingType(2L))));
+        when(trainingTypeDao.findByName("ZUMBA")).thenReturn(Optional.of(trainingType(3L)));
 
-        Assertions.assertSame(yoga, trainingService.selectTrainingProfile(7L));
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
+                        "Zumba Class", "ZUMBA", DATE, 50L));
+
+        verifyNoInteractions(trainingDao);
+    }
+
+    @Test
+    @DisplayName("getTraineeTrainings passes the authenticated username and the filters to the dao")
+    void passesTraineeFiltersToDao() {
+        List<Training> expected = List.of(Training.builder().id(1L).name("Morning Yoga").build());
+        when(trainingDao.findTraineeTrainings("John.Smith", DATE, DATE, "Sarah", "YOGA")).thenReturn(expected);
+
+        List<Training> trainings = trainingService.getTraineeTrainings(
+                "John.Smith", PASSWORD, DATE, DATE, "Sarah", "YOGA");
+
+        Assertions.assertSame(expected, trainings);
+        verify(authenticationService).authenticate("John.Smith", PASSWORD);
+    }
+
+    @Test
+    @DisplayName("getTrainerTrainings passes the authenticated username and the filters to the dao")
+    void passesTrainerFiltersToDao() {
+        List<Training> expected = List.of(Training.builder().id(1L).name("Morning Yoga").build());
+        when(trainingDao.findTrainerTrainings("Sarah.Miller", DATE, DATE, "John")).thenReturn(expected);
+
+        List<Training> trainings = trainingService.getTrainerTrainings(
+                "Sarah.Miller", PASSWORD, DATE, DATE, "John");
+
+        Assertions.assertSame(expected, trainings);
+        verify(authenticationService).authenticate("Sarah.Miller", PASSWORD);
     }
 }
