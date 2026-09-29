@@ -7,8 +7,9 @@ import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.model.TrainingType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -16,7 +17,7 @@ import java.time.LocalDate;
 @Slf4j
 @Component
 @Profile("demo")
-public class GymCrmDemo implements CommandLineRunner {
+public class GymCrmDemo {
     private GymCrmFacade gymCrmFacade;
 
     @Autowired
@@ -24,8 +25,8 @@ public class GymCrmDemo implements CommandLineRunner {
         this.gymCrmFacade = gymCrmFacade;
     }
 
-    @Override
-    public void run(String... args) {
+    @EventListener(ContextRefreshedEvent.class)
+    public void run() {
         Trainee seeded = gymCrmFacade.selectTraineeProfile(1L);
         log.info("Demo: seeded trainee 1 is {}", seeded.getUsername());
 

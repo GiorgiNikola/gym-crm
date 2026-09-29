@@ -4,7 +4,7 @@ Spring Core module of the Gym CRM. Everything lives in memory, there's no web la
 
 ## Stack
 
-Java 21, Spring Boot 4.1.1 (Spring Core only, no web starter), Lombok 1.18.46, JUnit Jupiter 6.0.3, Mockito 5.23.0, JaCoCo 0.8.13.
+Java 21, Spring Framework 7.0.9 (`spring-context` only, no Spring Boot), SLF4J with Logback, Lombok 1.18.46, JUnit Jupiter 6.0.3, Mockito 5.23.0, JaCoCo 0.8.13.
 
 ## Getting it running
 
@@ -32,28 +32,32 @@ JaCoCo is bound to the `test` phase, so that same command writes the coverage re
 You can start the app too:
 
 ```bash
-./mvnw spring-boot:run
+./mvnw exec:java
 ```
 
 Be aware there's nothing to talk to. It boots the Spring context, `StorageInitializer` fills the three storage maps from the CSV files and logs how many rows each one got, and then the process exits because there's no web server or anything else keeping it alive. If you want to actually see it do something, run the demo below.
 
 ## Demo
 
-There's a demo runner that goes through the facade against the seeded data. It only exists under the `demo` profile, so a plain `spring-boot:run` and the tests never touch it.
+There's a demo runner that goes through the facade against the seeded data. It only exists under the `demo` profile, so a plain `exec:java` and the tests never touch it.
 
 ```bash
-./mvnw spring-boot:run "-Dspring-boot.run.profiles=demo"
+./mvnw exec:java "-Dspring.profiles.active=demo"
 ```
 
 Keep the quotes, PowerShell splits the argument on the dots without them.
 
 It looks up a seeded trainee, then creates a second John Smith, who ends up as `John.Smith1`. Then a trainer called Ana Kapanadze, who gets `Ana.Kapanadze1` because a trainee already owns the base name. It books a yoga training between the two, tries to change John's username through an update and shows it stays put, then creates a throwaway trainee and deletes it. Each step logs a line starting with `Demo:` next to the services' own INFO lines. Passwords only show up as their length. The process exits when it's done, and since storage is in memory, the next run starts from the CSV seed again.
 
-The demo is `GymCrmDemo` in the `demo` package, a `CommandLineRunner` marked `@Profile("demo")`. It gets the facade through a setter like everything else.
+The demo is `GymCrmDemo` in the `demo` package, marked `@Profile("demo")`. It runs off an `@EventListener` on `ContextRefreshedEvent`, so it fires once the context is fully built, and it gets the facade through a setter like everything else.
 
 ## How it's wired
 
+There's no Spring Boot here, just `spring-context`. `GymCrmApplication` is a `@Configuration` class with `@ComponentScan`, and `main` builds an `AnnotationConfigApplicationContext` from it and closes it again.
+
 Configuration is annotation based. `StorageConfig` is a `@Configuration` class, and everything else is picked up by component scanning through `@Component` and `@Service`.
+
+`StorageConfig` also declares a `static PropertySourcesPlaceholderConfigurer` bean. Without Boot nothing registers one for you, and `@PropertySource` on its own loads the file but doesn't resolve `${...}`, so the `@Value` fields in `StorageInitializer` would fail on startup. It has to be `static` so it's created early enough to process the other beans.
 
 Each storage map is its own bean. `StorageConfig` declares three separate `@Bean` methods, `traineeStorage()`, `trainerStorage()` and `trainingStorage()`, each returning a plain `HashMap`. They're distinct beans rather than one shared structure, so each entity type can be listed on its own.
 
@@ -109,7 +113,7 @@ The DAOs copy on the way in and on the way out. `save` and `update` store a copy
 
 ## Logging
 
-SLF4J through Lombok's `@Slf4j`. `application.properties` sets `com.giorgi.gymcrm` to DEBUG, so every level below shows up.
+SLF4J through Lombok's `@Slf4j`, with Logback behind it. `logback.xml` sets `com.giorgi.gymcrm` to DEBUG and everything else to INFO, so every level below shows up.
 
 WARN is for rejected input. Blank names, a missing specialization, a training for a trainee or trainer that doesn't exist, a duration that isn't positive, an update or delete for an unknown id. The message says what was wrong, with the bad value in it when there is one. The seed loader also warns when a file has duplicate ids.
 
