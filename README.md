@@ -21,30 +21,14 @@ You need Java 21, Maven or the wrapper in the repo, and a PostgreSQL server on l
 CREATE DATABASE gymcrm;
 ```
 
-Credentials come from the environment. `application.properties` reads `${DB_USERNAME}` and `${DB_PASSWORD}` and has no default for either, so set both before you start anything. Miss one and startup fails on the unresolved placeholder:
-
-PowerShell:
+Credentials come from the environment, `application.properties` reads `${DB_USERNAME}` and `${DB_PASSWORD}` with no defaults. Set both or startup fails on the unresolved placeholder:
 
 ```powershell
 $env:DB_USERNAME="postgres"
 $env:DB_PASSWORD="yourpassword"
 ```
 
-cmd:
-
-```bash
-set DB_USERNAME=postgres
-set DB_PASSWORD=yourpassword
-```
-
-macOS and Linux:
-
-```bash
-export DB_USERNAME=postgres
-export DB_PASSWORD=yourpassword
-```
-
-Either way they only last for that terminal session. `set` in PowerShell is an alias for `Set-Variable` and will not set an environment variable, which is an easy half hour to lose.
+That is PowerShell, `export` on macOS and Linux. They last only for that terminal session, and note `set` does not work in PowerShell, it is an alias for `Set-Variable`.
 
 Then build and run:
 
@@ -53,7 +37,7 @@ Then build and run:
 ./mvnw exec:java
 ```
 
-`hibernate.ddl-auto` is set to `create`, so every start drops the schema, recreates it from the entities and reinserts the five training types from `data.sql`. Nothing survives a restart. That is deliberate for a demo project, but do not point this at a database you care about.
+`hibernate.ddl-auto` is set to `create`, so every start drops the schema, recreates it from the entities and reinserts the five training types from `data.sql`. Nothing survives a restart, which is deliberate here, but do not point this at a database you care about.
 
 Run the tests:
 
@@ -65,7 +49,7 @@ Tests never touch PostgreSQL. `src/test/resources/application.properties` points
 
 ## Demo
 
-There is a demo runner that walks the facade through 15 of its 18 operations. It only exists under the `demo` profile, so a plain run and the test suite never touch it.
+There is a demo runner that walks the facade through 15 of its 18 operations, leaving out only the trainer side mirrors of what it already does on the trainee. It only exists under the `demo` profile, so a plain run and the test suite never touch it.
 
 ```bash
 ./mvnw exec:java "-Dspring.profiles.active=demo"
@@ -73,9 +57,7 @@ There is a demo runner that walks the facade through 15 of its 18 operations. It
 
 Keep the quotes, PowerShell splits the argument on the dots without them.
 
-It creates two trainers and a trainee, then a second John Smith who ends up as `John.Smith1`. It assigns trainers, books trainings, and shows the things that are supposed to fail: a Zumba class booked with a yoga trainer, activating an already active profile, and authenticating with a password that has just been changed. The last section deletes the trainee and reports the trainer's training count dropping to zero, which is the cascade doing its job. Every step logs a header line next to the services' own INFO lines. Passwords are never printed.
-
-The three it skips are the trainer side mirrors of things it already does on the trainee: changing a trainer's password, and activating or deactivating a trainer.
+It creates two trainers and a trainee, then a second John Smith who ends up as `John.Smith1`. It assigns trainers, books trainings, and shows the things that are supposed to fail: a Zumba class booked with a yoga trainer, activating an already active profile, and authenticating with a password that has just been changed. The last section deletes the trainee and reports the trainer's training count dropping to zero, which is the cascade doing its job. Every step logs a header line, and passwords are never printed.
 
 The runner is `DemoRunner` in the `demo` package, marked `@Profile("demo")`. It fires off an `@EventListener` on `ContextRefreshedEvent`, so it runs once the context is fully built.
 
@@ -87,13 +69,9 @@ There is no Spring Boot, so nothing autoconfigures the persistence layer. `confi
 
 Two things there are easy to miss. The `PropertySourcesPlaceholderConfigurer` has to be declared, and has to be `static`, or the `${...}` placeholders never resolve. And `data.sql` runs through a `DataSourceInitializer` marked `@DependsOn("entityManagerFactory")`, because the entity manager factory is what creates the tables and the insert has to wait for them.
 
-Injection is setter based in the services and `UsernameResolver`, the same split the previous module used. `GymCrmFacade` takes its three services through the constructor, which is what the original task asks for. The DAOs get their `EntityManager` through `@PersistenceContext` field injection, which is the standard way to do it: the injected instance is a proxy that resolves to the transaction bound `EntityManager` at call time, so one DAO bean is safe across concurrent transactions.
+Injection is setter based in the services and `UsernameResolver`, the same split the previous module used. `GymCrmFacade` and `DemoRunner` take their dependencies through the constructor. The DAOs get their `EntityManager` through `@PersistenceContext`, which injects a proxy that resolves to the transaction bound one at call time, so a single DAO bean is safe across concurrent transactions.
 
-`DemoRunner` also takes the facade through its constructor, since it is a runner rather than a service.
-
-Transactions live on the service layer, never on the DAOs and never on the facade. Writes get `@Transactional`, reads get `@Transactional(readOnly = true)`. A service method is the unit of work, so `updateTrainers` resolving five trainer usernames and replacing the set either happens completely or not at all.
-
-The one service without a `@Transactional` of its own is `UsernameResolver`. It runs inside whichever transaction called it, which is fine because the only callers are the two `createProfile` methods, but it is not safe to call on its own.
+Transactions live on the service layer, never on the DAOs and never on the facade. Writes get `@Transactional`, reads get `@Transactional(readOnly = true)`. A service method is the unit of work, so `updateTrainers` resolving five trainer usernames and replacing the set either happens completely or not at all. The exception is `UsernameResolver`, which has none of its own and runs inside whichever transaction called it, so it is not safe to call on its own.
 
 ## Schema
 
@@ -110,7 +88,7 @@ trainee2trainer   trainee_id (FK), trainer_id (FK), composite PK
 
 `TrainingType` is mapped `@Immutable` with getters only, no setters and no builder. The five rows come from `data.sql` and nothing in the application can write to that table, which is what the task asks for.
 
-On why training and training type are separate tables: the type is a fixed list shared by two different things, a trainer's specialization and a training's type, so keeping it in one table gives both a foreign key instead of a free text string that can be typed wrong. Adding a sixth type becomes a data change rather than a schema or code change, and renaming one updates every row that references it. The alternative, an enum column on each table, would duplicate the list in two places and let the two drift apart.
+Training type is its own table because the list is shared by two things, a trainer's specialization and a training's type, so both get a foreign key instead of a free text string. Adding a sixth type is then a data change rather than a code change.
 
 Every `@ManyToOne` and `@OneToOne` is explicitly `LAZY`, since the JPA default for to-one associations is eager and that pulls in rows nobody asked for. The three `findByUsername` queries then `join fetch` what a caller actually reads, so a trainee comes back with its user loaded and a trainer with its user and specialization loaded.
 
@@ -128,7 +106,7 @@ Deleting a trainee is a hard delete that takes their trainings with it, per the 
 
 Every operation except the two profile creations authenticates first. `AuthenticationService.authenticate` looks the user up by username, compares the password, and throws `AuthenticationException` if either the user is missing or the password does not match. Both cases give the same message on purpose, so the error does not reveal which usernames exist.
 
-Credentials are passed as the first two arguments of every operation except the two creations. There is no session and no security context yet, so this is the honest version of what the task asks for at this stage. It goes away when Spring Security arrives in a later module.
+Credentials are the first two arguments of every operation except the two creations. There is no session and no security context yet, that arrives with Spring Security in a later module.
 
 ## Validation and errors
 
@@ -197,7 +175,7 @@ WARN is for a failed authentication attempt. The message names the username, nev
 
 DEBUG is for lookups and internals: the id of a persisted row, the username a successful authentication resolved to, the username `UsernameResolver` settled on, and every taken candidate it had to skip.
 
-A failed authentication is the only failure that gets logged. Validation failures, an unknown username and an unknown training type are thrown without a log line, because the caller gets the exception and nothing here can do anything useful about it. There is no ERROR level anywhere, since none of these are the application failing at something. No log statement passes a password, and since no entity has a Lombok `toString`, none can leak one indirectly either. Hibernate's SQL logging prints statements with `?` placeholders, so bound values including passwords do not appear.
+A failed authentication is the only failure that gets logged. Validation failures, an unknown username and an unknown training type are thrown without a log line, since the caller gets the exception. There is no ERROR level anywhere. No log statement passes a password, no entity has a Lombok `toString` to leak one indirectly, and Hibernate logs SQL with `?` placeholders rather than bound values.
 
 ## Testing
 
@@ -212,8 +190,6 @@ Services, `UsernameResolver` and the facade are tested with Mockito and no Sprin
 ## Known limitations
 
 Passwords are stored and compared in plain text. The task specifies password matching at this stage, hashing arrives with Spring Security.
-
-Credentials are passed into every operation as arguments. There is no session, so each call authenticates from scratch.
 
 Authentication is not authorization. `addTraining` checks that the caller is a real user, but does not check that the caller is the trainee or the trainer involved, so any authenticated user can book a training between any two people.
 
