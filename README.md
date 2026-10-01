@@ -4,7 +4,7 @@ Hibernate module of the Gym CRM. Trainee and trainer profiles, their assignments
 
 ## Stack
 
-Java 21, Spring Boot 4.1.1, Hibernate 7.4.5 through `spring-boot-starter-data-jpa` (no Spring Data repositories, the DAOs use `EntityManager` directly), PostgreSQL 17, H2 for tests, Lombok, JUnit Jupiter, Mockito, JaCoCo.
+Java 21, Spring Framework 7.0.9 (`spring-context` and `spring-orm`, no Spring Boot), Hibernate 7.4.5 as the JPA provider with no Spring Data repositories, the DAOs use `EntityManager` directly. HikariCP for pooling, PostgreSQL 17, H2 for tests, SLF4J with Logback, Lombok, JUnit Jupiter, Mockito, JaCoCo.
 
 ## Getting it running
 
@@ -23,22 +23,37 @@ CREATE DATABASE gymcrm;
 
 Credentials come from the environment. `application.properties` reads `${DB_USERNAME}` and `${DB_PASSWORD}` and has no default for either, so set both before you start anything. Miss one and startup fails on the unresolved placeholder:
 
-```bash
-set DB_USERNAME=postgres            # Windows
-set DB_PASSWORD=yourpassword
+PowerShell:
 
-export DB_USERNAME=postgres         # macOS and Linux
+```powershell
+$env:DB_USERNAME="postgres"
+$env:DB_PASSWORD="yourpassword"
+```
+
+cmd:
+
+```bash
+set DB_USERNAME=postgres
+set DB_PASSWORD=yourpassword
+```
+
+macOS and Linux:
+
+```bash
+export DB_USERNAME=postgres
 export DB_PASSWORD=yourpassword
 ```
+
+Either way they only last for that terminal session. `set` in PowerShell is an alias for `Set-Variable` and will not set an environment variable, which is an easy half hour to lose.
 
 Then build and run:
 
 ```bash
 ./mvnw clean package
-./mvnw spring-boot:run
+./mvnw exec:java
 ```
 
-`ddl-auto` is set to `create`, so every start drops the schema, recreates it from the entities and reinserts the five training types from `data.sql`. Nothing survives a restart. That is deliberate for a demo project, but do not point this at a database you care about.
+`hibernate.ddl-auto` is set to `create`, so every start drops the schema, recreates it from the entities and reinserts the five training types from `data.sql`. Nothing survives a restart. That is deliberate for a demo project, but do not point this at a database you care about.
 
 Run the tests:
 
@@ -53,7 +68,7 @@ Tests never touch PostgreSQL. `src/test/resources/application.properties` points
 There is a demo runner that walks the facade through 15 of its 18 operations. It only exists under the `demo` profile, so a plain run and the test suite never touch it.
 
 ```bash
-./mvnw spring-boot:run "-Dspring-boot.run.profiles=demo"
+./mvnw exec:java "-Dspring.profiles.active=demo"
 ```
 
 Keep the quotes, PowerShell splits the argument on the dots without them.
@@ -62,11 +77,15 @@ It creates two trainers and a trainee, then a second John Smith who ends up as `
 
 The three it skips are the trainer side mirrors of things it already does on the trainee: changing a trainer's password, and activating or deactivating a trainer.
 
-The runner is `DemoRunner` in the `demo` package, a `CommandLineRunner` marked `@Profile("demo")`.
+The runner is `DemoRunner` in the `demo` package, marked `@Profile("demo")`. It fires off an `@EventListener` on `ContextRefreshedEvent`, so it runs once the context is fully built.
 
 ## How it's wired
 
-Configuration is annotation based and there is no `@Configuration` class at all. Component scanning picks up `@Repository`, `@Service` and `@Component`, and Spring Boot autoconfigures the DataSource, the EntityManagerFactory and the transaction manager from `application.properties`.
+Configuration is annotation based. `GymCrmApplication` carries `@Configuration` and `@ComponentScan`, and `main` builds an `AnnotationConfigApplicationContext` from it. Component scanning picks up `@Repository`, `@Service` and `@Component`.
+
+There is no Spring Boot, so nothing autoconfigures the persistence layer. `config/PersistenceConfig` declares it by hand: a `HikariDataSource` from the `db.*` properties, a `LocalContainerEntityManagerFactoryBean` scanning `com.giorgi.gymcrm.model` with a `HibernateJpaVendorAdapter`, and a `JpaTransactionManager`. `@EnableTransactionManagement` is what makes `@Transactional` do anything.
+
+Two things there are easy to miss. The `PropertySourcesPlaceholderConfigurer` has to be declared, and has to be `static`, or the `${...}` placeholders never resolve. And `data.sql` runs through a `DataSourceInitializer` marked `@DependsOn("entityManagerFactory")`, because the entity manager factory is what creates the tables and the insert has to wait for them.
 
 Injection is setter based in the services and `UsernameResolver`, the same split the previous module used. `GymCrmFacade` takes its three services through the constructor, which is what the original task asks for. The DAOs get their `EntityManager` through `@PersistenceContext` field injection, which is the standard way to do it: the injected instance is a proxy that resolves to the transaction bound `EntityManager` at call time, so one DAO bean is safe across concurrent transactions.
 
@@ -170,7 +189,7 @@ No entity declares `equals`, `hashCode` or `toString`. Lombok's generated versio
 
 ## Logging
 
-SLF4J through Lombok's `@Slf4j`. `application.properties` sets `com.giorgi.gymcrm` to DEBUG.
+SLF4J through Lombok's `@Slf4j`, with Logback behind it. `logback.xml` sets `com.giorgi.gymcrm` and `org.hibernate.SQL` to DEBUG and everything else to INFO. `logback-test.xml` quiets both the SQL and the root logger for test runs.
 
 INFO is for state changes that actually happened: profile created, profile updated, password changed, profile deleted, trainer list replaced, activation flipped, training added. Each one is logged after the DAO call returns, so a failed write never leaves a success line behind.
 
@@ -184,7 +203,7 @@ A failed authentication is the only failure that gets logged. Validation failure
 
 119 tests. Line coverage is above 80%, with the demo runner and the application entry point excluded from the report since neither contains logic worth testing. Open the JaCoCo report for the current numbers.
 
-DAO tests run against H2 with `@SpringBootTest` and `@Transactional`, so each test rolls back and the next one starts clean. They are the ones that prove the mappings and the queries: the cascade delete, the fetch joins actually initializing their associations, `findNotAssignedToTrainee` excluding both assigned and inactive trainers, and the list filters one at a time and several at once. The one case they do not cover is a filter passed as a blank string instead of null.
+DAO tests run against H2 with `@ExtendWith(SpringExtension.class)`, `@ContextConfiguration` and `@Transactional`, so each test rolls back and the next one starts clean. They are the ones that prove the mappings and the queries: the cascade delete, the fetch joins actually initializing their associations, `findNotAssignedToTrainee` excluding both assigned and inactive trainers, and the list filters one at a time and several at once. The one case they do not cover is a filter passed as a blank string instead of null.
 
 Services, `UsernameResolver` and the facade are tested with Mockito and no Spring context. The facade tests are pure delegation checks, they catch wrong wiring and swapped arguments and nothing more.
 

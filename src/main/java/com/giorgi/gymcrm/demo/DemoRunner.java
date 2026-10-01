@@ -5,8 +5,9 @@ import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -16,7 +17,7 @@ import java.util.Set;
 @Slf4j
 @Component
 @Profile("demo")
-public class DemoRunner implements CommandLineRunner {
+public class DemoRunner {
 
     private final GymCrmFacade facade;
 
@@ -24,8 +25,8 @@ public class DemoRunner implements CommandLineRunner {
         this.facade = facade;
     }
 
-    @Override
-    public void run(String... args) {
+    @EventListener(ContextRefreshedEvent.class)
+    public void run() {
         log.info("=== 1, 2. Create profiles ===");
         Trainer sarah = facade.createTrainerProfile("Sarah", "Miller", "YOGA");
         Trainer robert = facade.createTrainerProfile("Robert", "Taylor", "FITNESS");

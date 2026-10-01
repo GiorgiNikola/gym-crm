@@ -1,16 +1,20 @@
 package com.giorgi.gymcrm.dao;
 
+import com.giorgi.gymcrm.GymCrmApplication;
 import com.giorgi.gymcrm.model.TrainingType;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
-@SpringBootTest
+@ExtendWith(SpringExtension.class)
+@ContextConfiguration(classes = GymCrmApplication.class)
 @Transactional
 class TrainingTypeDaoImplTest {
 
