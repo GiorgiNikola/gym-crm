@@ -26,6 +26,7 @@ public class TrainingDaoImpl implements TrainingDao {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public List<Training> findTraineeTrainings(String traineeUsername,
                                                LocalDate fromDate,
                                                LocalDate toDate,
@@ -35,8 +36,11 @@ public class TrainingDaoImpl implements TrainingDao {
         CriteriaQuery<Training> query = cb.createQuery(Training.class);
         Root<Training> training = query.from(Training.class);
 
-        Join<Training, Trainee> trainee = training.join("trainee");
-        Join<Trainee, User> traineeUser = trainee.join("user");
+        Join<Training, Trainee> trainee = (Join<Training, Trainee>) training.<Training, Trainee>fetch("trainee");
+        Join<Trainee, User> traineeUser = (Join<Trainee, User>) trainee.<Trainee, User>fetch("user");
+        Join<Training, Trainer> trainer = (Join<Training, Trainer>) training.<Training, Trainer>fetch("trainer");
+        Join<Trainer, User> trainerUser = (Join<Trainer, User>) trainer.<Trainer, User>fetch("user");
+        Join<Training, TrainingType> type = (Join<Training, TrainingType>) training.<Training, TrainingType>fetch("type");
 
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(cb.equal(traineeUser.get("username"), traineeUsername));
@@ -48,13 +52,10 @@ public class TrainingDaoImpl implements TrainingDao {
             predicates.add(cb.lessThanOrEqualTo(training.get("date"), toDate));
         }
         if (trainerName != null && !trainerName.isBlank()) {
-            Join<Training, Trainer> trainer = training.join("trainer");
-            Join<Trainer, User> trainerUser = trainer.join("user");
             predicates.add(cb.like(cb.lower(trainerUser.get("firstName")),
                     "%" + trainerName.toLowerCase() + "%"));
         }
         if (trainingTypeName != null && !trainingTypeName.isBlank()) {
-            Join<Training, TrainingType> type = training.join("type");
             predicates.add(cb.equal(type.get("name"), trainingTypeName));
         }
 
@@ -66,6 +67,7 @@ public class TrainingDaoImpl implements TrainingDao {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public List<Training> findTrainerTrainings(String trainerUsername,
                                                LocalDate fromDate,
                                                LocalDate toDate,
@@ -74,8 +76,11 @@ public class TrainingDaoImpl implements TrainingDao {
         CriteriaQuery<Training> query = cb.createQuery(Training.class);
         Root<Training> training = query.from(Training.class);
 
-        Join<Training, Trainer> trainer = training.join("trainer");
-        Join<Trainer, User> trainerUser = trainer.join("user");
+        Join<Training, Trainer> trainer = (Join<Training, Trainer>) training.<Training, Trainer>fetch("trainer");
+        Join<Trainer, User> trainerUser = (Join<Trainer, User>) trainer.<Trainer, User>fetch("user");
+        Join<Training, Trainee> trainee = (Join<Training, Trainee>) training.<Training, Trainee>fetch("trainee");
+        Join<Trainee, User> traineeUser = (Join<Trainee, User>) trainee.<Trainee, User>fetch("user");
+        training.fetch("type");
 
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(cb.equal(trainerUser.get("username"), trainerUsername));
@@ -87,8 +92,6 @@ public class TrainingDaoImpl implements TrainingDao {
             predicates.add(cb.lessThanOrEqualTo(training.get("date"), toDate));
         }
         if (traineeName != null && !traineeName.isBlank()) {
-            Join<Training, Trainee> trainee = training.join("trainee");
-            Join<Trainee, User> traineeUser = trainee.join("user");
             predicates.add(cb.like(cb.lower(traineeUser.get("firstName")),
                     "%" + traineeName.toLowerCase() + "%"));
         }

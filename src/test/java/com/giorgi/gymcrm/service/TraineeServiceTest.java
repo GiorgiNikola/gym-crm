@@ -221,8 +221,8 @@ class TraineeServiceTest {
         Trainer sarah = trainer("Sarah", "Miller");
         Trainer robert = trainer("Robert", "Taylor");
         when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
-        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
-        when(trainerDao.findByUsername("Robert.Taylor")).thenReturn(Optional.of(robert));
+        when(trainerDao.findAllByUsernames(Set.of("Sarah.Miller", "Robert.Taylor")))
+                .thenReturn(List.of(sarah, robert));
         when(traineeDao.update(john)).thenReturn(john);
 
         Trainee updated = traineeService.updateTrainers("John.Smith", PASSWORD,
@@ -235,12 +235,16 @@ class TraineeServiceTest {
     @Test
     @DisplayName("updateTrainers throws when one trainer username is unknown")
     void updateTrainersThrowsForUnknownTrainer() {
+        Trainer sarah = trainer("Sarah", "Miller");
         when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john(true)));
-        when(trainerDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
+        when(trainerDao.findAllByUsernames(Set.of("Sarah.Miller", "Nobody.Here")))
+                .thenReturn(List.of(sarah));
 
-        Assertions.assertThrows(ProfileNotFoundException.class,
-                () -> traineeService.updateTrainers("John.Smith", PASSWORD, Set.of("Nobody.Here")));
+        ProfileNotFoundException thrown = Assertions.assertThrows(ProfileNotFoundException.class,
+                () -> traineeService.updateTrainers("John.Smith", PASSWORD,
+                        Set.of("Sarah.Miller", "Nobody.Here")));
 
+        Assertions.assertTrue(thrown.getMessage().contains("Nobody.Here"), thrown.getMessage());
         verify(traineeDao, never()).update(any(Trainee.class));
     }
 

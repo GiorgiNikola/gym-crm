@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.giorgi.gymcrm.util.Validations.requireText;
 
@@ -144,10 +145,14 @@ public class TraineeService {
 
         Trainee trainee = findOrThrow(username);
 
-        Set<Trainer> trainers = new HashSet<>();
-        for (String trainerUsername : trainerUsernames) {
-            trainers.add(trainerDao.findByUsername(trainerUsername)
-                    .orElseThrow(() -> new ProfileNotFoundException("Trainer not found: " + trainerUsername)));
+        Set<Trainer> trainers = new HashSet<>(trainerDao.findAllByUsernames(trainerUsernames));
+        if (trainers.size() != trainerUsernames.size()) {
+            Set<String> found = trainers.stream()
+                    .map(trainer -> trainer.getUser().getUsername())
+                    .collect(Collectors.toSet());
+            Set<String> missing = new HashSet<>(trainerUsernames);
+            missing.removeAll(found);
+            throw new ProfileNotFoundException("Trainers not found: " + String.join(", ", missing));
         }
 
         trainee.setTrainers(trainers);

@@ -160,8 +160,6 @@ Changing a trainer's specialization leaves their old trainings alone, so a train
 
 Two people registering the same name at the exact same moment can both see the username as free. The database constraint catches it, so you get an error rather than a duplicate.
 
-The filtered training lists return trainings whose trainee, trainer and type are not loaded. Reading those after the call throws. Only the training's own fields are safe.
-
 Every start wipes the database. Fine here, not fine anywhere real.
 
 Nothing is thread safe beyond what the database itself provides.

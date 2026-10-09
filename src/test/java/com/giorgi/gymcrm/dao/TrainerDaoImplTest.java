@@ -162,4 +162,30 @@ class TrainerDaoImplTest {
         Assertions.assertEquals("STRETCHING",
                 entityManager.find(Trainer.class, saved.getId()).getSpecialization().getName());
     }
+
+    @Test
+    @DisplayName("findAllByUsernames returns every match in one call")
+    void findsSeveralTrainersByUsername() {
+        trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));
+        trainerDao.save(trainer("Robert", "Taylor", "FITNESS", true));
+        trainerDao.save(trainer("Laura", "Davis", "STRETCHING", true));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Trainer> found = trainerDao.findAllByUsernames(List.of("Sarah.Miller", "Laura.Davis"));
+
+        Assertions.assertEquals(2, found.size());
+        Assertions.assertTrue(usernames(found).containsAll(List.of("Sarah.Miller", "Laura.Davis")));
+        Assertions.assertTrue(Hibernate.isInitialized(found.get(0).getUser()));
+        Assertions.assertTrue(Hibernate.isInitialized(found.get(0).getSpecialization()));
+    }
+
+    @Test
+    @DisplayName("findAllByUsernames returns an empty list for an empty collection")
+    void findsNothingForEmptyCollection() {
+        trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));
+        entityManager.flush();
+
+        Assertions.assertTrue(trainerDao.findAllByUsernames(List.of()).isEmpty());
+    }
 }

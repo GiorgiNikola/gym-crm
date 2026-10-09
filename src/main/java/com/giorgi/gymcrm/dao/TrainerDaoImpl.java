@@ -6,6 +6,7 @@ import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,6 +40,22 @@ public class TrainerDaoImpl implements TrainerDao {
                 .setParameter("username", username)
                 .getResultStream()
                 .findFirst();
+    }
+
+    @Override
+    public List<Trainer> findAllByUsernames(Collection<String> usernames) {
+        if (usernames.isEmpty()) {
+            return List.of();
+        }
+
+        return entityManager.createQuery("""
+                    select t from Trainer t
+                    join fetch t.user u
+                    join fetch t.specialization
+                    where u.username in :usernames
+                    """, Trainer.class)
+                .setParameter("usernames", usernames)
+                .getResultList();
     }
 
     @Override

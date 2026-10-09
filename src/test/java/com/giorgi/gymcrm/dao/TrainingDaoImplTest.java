@@ -8,6 +8,7 @@ import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -190,5 +191,18 @@ class TrainingDaoImplTest {
         List<Training> trainings = trainingDao.findTrainerTrainings("Sarah.Miller", null, null, "emily");
 
         Assertions.assertEquals(List.of("Evening Yoga"), names(trainings));
+    }
+
+    @Test
+    @DisplayName("findTraineeTrainings returns trainings with trainee, trainer and type loaded")
+    void traineeTrainingsComeBackWithAssociationsLoaded() {
+        List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", null, null, null, null);
+
+        Training first = trainings.get(0);
+        Assertions.assertTrue(Hibernate.isInitialized(first.getTrainee()));
+        Assertions.assertTrue(Hibernate.isInitialized(first.getTrainee().getUser()));
+        Assertions.assertTrue(Hibernate.isInitialized(first.getTrainer()));
+        Assertions.assertTrue(Hibernate.isInitialized(first.getTrainer().getUser()));
+        Assertions.assertTrue(Hibernate.isInitialized(first.getType()));
     }
 }
