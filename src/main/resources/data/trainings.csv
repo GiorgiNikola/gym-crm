@@ -1,0 +1,9 @@
+id,traineeID,trainerID,name,type,date,duration
+1,1,1,Morning Fitness Session,FITNESS,2026-08-01,60
+2,1,2,Beginner Yoga Class,YOGA,2026-08-03,45
+3,2,3,Zumba Cardio Blast,ZUMBA,2026-08-05,50
+4,3,1,Full Body Fitness,FITNESS,2026-08-06,60
+5,4,4,Stretch and Flex,STRETCHING,2026-08-08,30
+6,2,2,Advanced Yoga Flow,YOGA,2026-08-10,60
+7,5,5,Strength and Resistance,RESISTANCE,2026-08-12,75
+8,4,3,Zumba Party,ZUMBA,2026-08-14,55
