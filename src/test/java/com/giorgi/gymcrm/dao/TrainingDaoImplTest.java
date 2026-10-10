@@ -205,4 +205,17 @@ class TrainingDaoImplTest {
         Assertions.assertTrue(Hibernate.isInitialized(first.getTrainer().getUser()));
         Assertions.assertTrue(Hibernate.isInitialized(first.getType()));
     }
+
+    @Test
+    @DisplayName("findTrainerTrainings returns trainings with trainee, trainer and type loaded")
+    void trainerTrainingsComeBackWithAssociationsLoaded() {
+        List<Training> trainings = trainingDao.findTrainerTrainings("Sarah.Miller", null, null, null);
+
+        Training first = trainings.get(0);
+        Assertions.assertTrue(Hibernate.isInitialized(first.getTrainee()));
+        Assertions.assertTrue(Hibernate.isInitialized(first.getTrainee().getUser()));
+        Assertions.assertTrue(Hibernate.isInitialized(first.getTrainer()));
+        Assertions.assertTrue(Hibernate.isInitialized(first.getTrainer().getUser()));
+        Assertions.assertTrue(Hibernate.isInitialized(first.getType()));
+    }
 }
