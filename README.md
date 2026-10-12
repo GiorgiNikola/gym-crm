@@ -144,7 +144,7 @@ No log line anywhere contains a password.
 
 ## Testing
 
-119 tests, above 80% line coverage with the demo runner excluded.
+123 tests, above 80% line coverage with the demo runner excluded.
 
 The DAO tests run against H2 and roll back after each test. They are the ones that matter, they prove the mappings and the queries: the cascade delete, the fetch joins, the filters one at a time and several at once. Services and the facade are tested with Mockito and no Spring context.
 

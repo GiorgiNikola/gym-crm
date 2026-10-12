@@ -198,11 +198,13 @@ class TrainingDaoImplTest {
     void traineeTrainingsComeBackWithAssociationsLoaded() {
         List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", null, null, null, null);
 
+        Assertions.assertFalse(trainings.isEmpty());
         Training first = trainings.get(0);
         Assertions.assertTrue(Hibernate.isInitialized(first.getTrainee()));
         Assertions.assertTrue(Hibernate.isInitialized(first.getTrainee().getUser()));
         Assertions.assertTrue(Hibernate.isInitialized(first.getTrainer()));
         Assertions.assertTrue(Hibernate.isInitialized(first.getTrainer().getUser()));
+        Assertions.assertTrue(Hibernate.isInitialized(first.getTrainer().getSpecialization()));
         Assertions.assertTrue(Hibernate.isInitialized(first.getType()));
     }
 
@@ -211,11 +213,13 @@ class TrainingDaoImplTest {
     void trainerTrainingsComeBackWithAssociationsLoaded() {
         List<Training> trainings = trainingDao.findTrainerTrainings("Sarah.Miller", null, null, null);
 
+        Assertions.assertFalse(trainings.isEmpty());
         Training first = trainings.get(0);
         Assertions.assertTrue(Hibernate.isInitialized(first.getTrainee()));
         Assertions.assertTrue(Hibernate.isInitialized(first.getTrainee().getUser()));
         Assertions.assertTrue(Hibernate.isInitialized(first.getTrainer()));
         Assertions.assertTrue(Hibernate.isInitialized(first.getTrainer().getUser()));
+        Assertions.assertTrue(Hibernate.isInitialized(first.getTrainer().getSpecialization()));
         Assertions.assertTrue(Hibernate.isInitialized(first.getType()));
     }
 }

@@ -40,6 +40,7 @@ public class TrainingDaoImpl implements TrainingDao {
         Join<Trainee, User> traineeUser = (Join<Trainee, User>) trainee.<Trainee, User>fetch("user");
         Join<Training, Trainer> trainer = (Join<Training, Trainer>) training.<Training, Trainer>fetch("trainer");
         Join<Trainer, User> trainerUser = (Join<Trainer, User>) trainer.<Trainer, User>fetch("user");
+        trainer.fetch("specialization");
         Join<Training, TrainingType> type = (Join<Training, TrainingType>) training.<Training, TrainingType>fetch("type");
 
         List<Predicate> predicates = new ArrayList<>();
@@ -78,6 +79,7 @@ public class TrainingDaoImpl implements TrainingDao {
 
         Join<Training, Trainer> trainer = (Join<Training, Trainer>) training.<Training, Trainer>fetch("trainer");
         Join<Trainer, User> trainerUser = (Join<Trainer, User>) trainer.<Trainer, User>fetch("user");
+        trainer.fetch("specialization");
         Join<Training, Trainee> trainee = (Join<Training, Trainee>) training.<Training, Trainee>fetch("trainee");
         Join<Trainee, User> traineeUser = (Join<Trainee, User>) trainee.<Trainee, User>fetch("user");
         training.fetch("type");

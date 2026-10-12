@@ -44,7 +44,7 @@ public class TrainerDaoImpl implements TrainerDao {
 
     @Override
     public List<Trainer> findAllByUsernames(Collection<String> usernames) {
-        if (usernames.isEmpty()) {
+        if (usernames == null || usernames.isEmpty()) {
             return List.of();
         }
 

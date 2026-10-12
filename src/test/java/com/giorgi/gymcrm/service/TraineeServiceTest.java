@@ -245,6 +245,7 @@ class TraineeServiceTest {
                         Set.of("Sarah.Miller", "Nobody.Here")));
 
         Assertions.assertTrue(thrown.getMessage().contains("Nobody.Here"), thrown.getMessage());
+        Assertions.assertFalse(thrown.getMessage().contains("Sarah.Miller"), thrown.getMessage());
         verify(traineeDao, never()).update(any(Trainee.class));
     }
 
