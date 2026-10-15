@@ -6,6 +6,7 @@ import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.service.TraineeService;
 import com.giorgi.gymcrm.service.TrainerService;
 import com.giorgi.gymcrm.service.TrainingService;
+import com.giorgi.gymcrm.service.UserService;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -18,13 +19,16 @@ public class GymCrmFacade {
     private final TraineeService traineeService;
     private final TrainerService trainerService;
     private final TrainingService trainingService;
+    private final UserService userService;
 
     public GymCrmFacade(TraineeService traineeService,
                         TrainerService trainerService,
-                        TrainingService trainingService) {
+                        TrainingService trainingService,
+                        UserService userService) {
         this.traineeService = traineeService;
         this.trainerService = trainerService;
         this.trainingService = trainingService;
+        this.userService = userService;
     }
 
     public Trainee createTraineeProfile(String firstName, String lastName,
@@ -36,8 +40,8 @@ public class GymCrmFacade {
         return traineeService.selectByUsername(username, password);
     }
 
-    public void changeTraineePassword(String username, String password, String newPassword) {
-        traineeService.changePassword(username, password, newPassword);
+    public void changePassword(String username, String password, String newPassword) {
+        userService.changePassword(username, password, newPassword);
     }
 
     public Trainee updateTraineeProfile(String username, String password,
@@ -46,12 +50,8 @@ public class GymCrmFacade {
         return traineeService.updateProfile(username, password, firstName, lastName, dateOfBirth, address);
     }
 
-    public void activateTrainee(String username, String password) {
-        traineeService.activate(username, password);
-    }
-
-    public void deactivateTrainee(String username, String password) {
-        traineeService.deactivate(username, password);
+    public void changeStatus(String username, String password, boolean active) {
+        userService.changeStatus(username, password, active);
     }
 
     public void deleteTraineeProfile(String username, String password) {
@@ -74,22 +74,10 @@ public class GymCrmFacade {
         return trainerService.selectByUsername(username, password);
     }
 
-    public void changeTrainerPassword(String username, String password, String newPassword) {
-        trainerService.changePassword(username, password, newPassword);
-    }
-
     public Trainer updateTrainerProfile(String username, String password,
                                         String firstName, String lastName,
                                         String specializationName) {
         return trainerService.updateProfile(username, password, firstName, lastName, specializationName);
-    }
-
-    public void activateTrainer(String username, String password) {
-        trainerService.activate(username, password);
-    }
-
-    public void deactivateTrainer(String username, String password) {
-        trainerService.deactivate(username, password);
     }
 
     public Training addTraining(String username, String password,

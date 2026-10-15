@@ -86,17 +86,6 @@ public class TraineeService {
     }
 
     @Transactional
-    public void changePassword(String username, String password, String newPassword) {
-        authenticationService.authenticate(username, password);
-        requireText(newPassword, "New password");
-
-        Trainee trainee = findOrThrow(username);
-        trainee.getUser().setPassword(newPassword);
-        traineeDao.update(trainee);
-        log.info("Password changed for trainee: {}", username);
-    }
-
-    @Transactional
     public Trainee updateProfile(String username, String password,
                                  String firstName, String lastName,
                                  LocalDate dateOfBirth, String address) {
@@ -113,18 +102,6 @@ public class TraineeService {
         Trainee updated = traineeDao.update(trainee);
         log.info("Updated trainee profile: {}", username);
         return updated;
-    }
-
-    @Transactional
-    public void activate(String username, String password) {
-        authenticationService.authenticate(username, password);
-        setActive(username, true);
-    }
-
-    @Transactional
-    public void deactivate(String username, String password) {
-        authenticationService.authenticate(username, password);
-        setActive(username, false);
     }
 
     @Transactional
@@ -166,17 +143,6 @@ public class TraineeService {
         authenticationService.authenticate(username, password);
         findOrThrow(username);
         return trainerDao.findNotAssignedToTrainee(username);
-    }
-
-    private void setActive(String username, boolean active) {
-        Trainee trainee = findOrThrow(username);
-        if (trainee.getUser().isActive() == active) {
-            throw new IllegalArgumentException(
-                    "Trainee " + username + " is already " + (active ? "active" : "inactive"));
-        }
-        trainee.getUser().setActive(active);
-        traineeDao.update(trainee);
-        log.info("Trainee {} set to {}", username, active ? "active" : "inactive");
     }
 
     private Trainee findOrThrow(String username) {

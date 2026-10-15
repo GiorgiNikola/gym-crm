@@ -6,6 +6,7 @@ import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.service.TraineeService;
 import com.giorgi.gymcrm.service.TrainerService;
 import com.giorgi.gymcrm.service.TrainingService;
+import com.giorgi.gymcrm.service.UserService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,9 @@ class GymCrmFacadeTest {
     @Mock
     private TrainingService trainingService;
 
+    @Mock
+    private UserService userService;
+
     @InjectMocks
     private GymCrmFacade gymCrmFacade;
 
@@ -63,14 +67,6 @@ class GymCrmFacadeTest {
     }
 
     @Test
-    @DisplayName("changeTraineePassword goes to the trainee service")
-    void changesTraineePassword() {
-        gymCrmFacade.changeTraineePassword("John.Smith", PASSWORD, "newPassword1");
-
-        verify(traineeService).changePassword("John.Smith", PASSWORD, "newPassword1");
-    }
-
-    @Test
     @DisplayName("updateTraineeProfile goes to the trainee service")
     void updatesTraineeProfile() {
         when(traineeService.updateProfile("John.Smith", PASSWORD, "John", "Smith", DATE_OF_BIRTH, ADDRESS))
@@ -78,22 +74,6 @@ class GymCrmFacadeTest {
 
         Assertions.assertSame(trainee, gymCrmFacade.updateTraineeProfile(
                 "John.Smith", PASSWORD, "John", "Smith", DATE_OF_BIRTH, ADDRESS));
-    }
-
-    @Test
-    @DisplayName("activateTrainee goes to the trainee service")
-    void activatesTrainee() {
-        gymCrmFacade.activateTrainee("John.Smith", PASSWORD);
-
-        verify(traineeService).activate("John.Smith", PASSWORD);
-    }
-
-    @Test
-    @DisplayName("deactivateTrainee goes to the trainee service")
-    void deactivatesTrainee() {
-        gymCrmFacade.deactivateTrainee("John.Smith", PASSWORD);
-
-        verify(traineeService).deactivate("John.Smith", PASSWORD);
     }
 
     @Test
@@ -139,14 +119,6 @@ class GymCrmFacadeTest {
     }
 
     @Test
-    @DisplayName("changeTrainerPassword goes to the trainer service")
-    void changesTrainerPassword() {
-        gymCrmFacade.changeTrainerPassword("Sarah.Miller", PASSWORD, "newPassword1");
-
-        verify(trainerService).changePassword("Sarah.Miller", PASSWORD, "newPassword1");
-    }
-
-    @Test
     @DisplayName("updateTrainerProfile goes to the trainer service")
     void updatesTrainerProfile() {
         when(trainerService.updateProfile("Sarah.Miller", PASSWORD, "Sarah", "Miller", "STRETCHING"))
@@ -157,19 +129,19 @@ class GymCrmFacadeTest {
     }
 
     @Test
-    @DisplayName("activateTrainer goes to the trainer service")
-    void activatesTrainer() {
-        gymCrmFacade.activateTrainer("Sarah.Miller", PASSWORD);
+    @DisplayName("changePassword goes to the user service")
+    void changesPassword() {
+        gymCrmFacade.changePassword("John.Smith", PASSWORD, "newPassword1");
 
-        verify(trainerService).activate("Sarah.Miller", PASSWORD);
+        verify(userService).changePassword("John.Smith", PASSWORD, "newPassword1");
     }
 
     @Test
-    @DisplayName("deactivateTrainer goes to the trainer service")
-    void deactivatesTrainer() {
-        gymCrmFacade.deactivateTrainer("Sarah.Miller", PASSWORD);
+    @DisplayName("changeStatus goes to the user service with the requested state")
+    void changesStatus() {
+        gymCrmFacade.changeStatus("Sarah.Miller", PASSWORD, false);
 
-        verify(trainerService).deactivate("Sarah.Miller", PASSWORD);
+        verify(userService).changeStatus("Sarah.Miller", PASSWORD, false);
     }
 
     @Test

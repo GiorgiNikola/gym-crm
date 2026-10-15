@@ -140,28 +140,6 @@ class TraineeServiceTest {
                 () -> traineeService.selectByUsername("Nobody.Here", PASSWORD));
     }
 
-    @Test
-    @DisplayName("changePassword stores the new password")
-    void changesPassword() {
-        Trainee john = john(true);
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
-
-        traineeService.changePassword("John.Smith", PASSWORD, "newPassword1");
-
-        Assertions.assertEquals("newPassword1", john.getUser().getPassword());
-        verify(traineeDao).update(john);
-    }
-
-    @ParameterizedTest
-    @NullSource
-    @ValueSource(strings = {"", "   "})
-    @DisplayName("changePassword rejects a blank new password")
-    void rejectsBlankNewPassword(String newPassword) {
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> traineeService.changePassword("John.Smith", PASSWORD, newPassword));
-
-        verify(traineeDao, never()).update(any(Trainee.class));
-    }
 
     @Test
     @DisplayName("updateProfile overwrites the name, date of birth and address")
@@ -177,29 +155,6 @@ class TraineeServiceTest {
         Assertions.assertEquals("Smithson", updated.getUser().getLastName());
         Assertions.assertEquals(LocalDate.of(2000, 1, 1), updated.getDateOfBirth());
         Assertions.assertEquals("456 Park Avenue Boston", updated.getAddress());
-    }
-
-    @Test
-    @DisplayName("activate throws when the trainee is already active")
-    void activateThrowsWhenAlreadyActive() {
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john(true)));
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> traineeService.activate("John.Smith", PASSWORD));
-
-        verify(traineeDao, never()).update(any(Trainee.class));
-    }
-
-    @Test
-    @DisplayName("deactivate clears the active flag")
-    void deactivateClearsActiveFlag() {
-        Trainee john = john(true);
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
-
-        traineeService.deactivate("John.Smith", PASSWORD);
-
-        Assertions.assertFalse(john.getUser().isActive());
-        verify(traineeDao).update(john);
     }
 
     @Test
@@ -259,18 +214,6 @@ class TraineeServiceTest {
                 () -> traineeService.selectByUsername("John.Smith", "wrongPassword"));
 
         verifyNoInteractions(traineeDao);
-    }
-
-    @Test
-    @DisplayName("activate sets the flag on an inactive trainee")
-    void activateSetsActiveFlag() {
-        Trainee john = john(false);
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
-
-        traineeService.activate("John.Smith", PASSWORD);
-
-        Assertions.assertTrue(john.getUser().isActive());
-        verify(traineeDao).update(john);
     }
 
     @Test

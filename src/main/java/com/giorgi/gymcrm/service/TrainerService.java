@@ -82,17 +82,6 @@ public class TrainerService {
     }
 
     @Transactional
-    public void changePassword(String username, String password, String newPassword) {
-        authenticationService.authenticate(username, password);
-        requireText(newPassword, "New password");
-
-        Trainer trainer = findOrThrow(username);
-        trainer.getUser().setPassword(newPassword);
-        trainerDao.update(trainer);
-        log.info("Password changed for trainer: {}", username);
-    }
-
-    @Transactional
     public Trainer updateProfile(String username, String password,
                                  String firstName, String lastName,
                                  String specializationName) {
@@ -109,29 +98,6 @@ public class TrainerService {
         Trainer updated = trainerDao.update(trainer);
         log.info("Updated trainer profile: {}", username);
         return updated;
-    }
-
-    @Transactional
-    public void activate(String username, String password) {
-        authenticationService.authenticate(username, password);
-        setActive(username, true);
-    }
-
-    @Transactional
-    public void deactivate(String username, String password) {
-        authenticationService.authenticate(username, password);
-        setActive(username, false);
-    }
-
-    private void setActive(String username, boolean active) {
-        Trainer trainer = findOrThrow(username);
-        if (trainer.getUser().isActive() == active) {
-            throw new IllegalArgumentException(
-                    "Trainer " + username + " is already " + (active ? "active" : "inactive"));
-        }
-        trainer.getUser().setActive(active);
-        trainerDao.update(trainer);
-        log.info("Trainer {} set to {}", username, active ? "active" : "inactive");
     }
 
     private Trainer findOrThrow(String username) {

@@ -151,29 +151,6 @@ class TrainerServiceTest {
     }
 
     @Test
-    @DisplayName("changePassword stores the new password")
-    void changesPassword() {
-        Trainer sarah = sarah(true);
-        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
-
-        trainerService.changePassword("Sarah.Miller", PASSWORD, "newPassword1");
-
-        Assertions.assertEquals("newPassword1", sarah.getUser().getPassword());
-        verify(trainerDao).update(sarah);
-    }
-
-    @ParameterizedTest
-    @NullSource
-    @ValueSource(strings = {"", "   "})
-    @DisplayName("changePassword rejects a blank new password")
-    void rejectsBlankNewPassword(String newPassword) {
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainerService.changePassword("Sarah.Miller", PASSWORD, newPassword));
-
-        verify(trainerDao, never()).update(any(Trainer.class));
-    }
-
-    @Test
     @DisplayName("updateProfile overwrites the name and the specialization")
     void updatesProfileAndSpecialization() {
         Trainer sarah = sarah(true);
@@ -191,29 +168,6 @@ class TrainerServiceTest {
     }
 
     @Test
-    @DisplayName("activate throws when the trainer is already active")
-    void activateThrowsWhenAlreadyActive() {
-        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah(true)));
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainerService.activate("Sarah.Miller", PASSWORD));
-
-        verify(trainerDao, never()).update(any(Trainer.class));
-    }
-
-    @Test
-    @DisplayName("deactivate clears the active flag")
-    void deactivateClearsActiveFlag() {
-        Trainer sarah = sarah(true);
-        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
-
-        trainerService.deactivate("Sarah.Miller", PASSWORD);
-
-        Assertions.assertFalse(sarah.getUser().isActive());
-        verify(trainerDao).update(sarah);
-    }
-
-    @Test
     @DisplayName("a failed authentication stops the operation before the dao is touched")
     void authenticationFailureStopsTheOperation() {
         doThrow(new AuthenticationException("Invalid username or password"))
@@ -223,17 +177,5 @@ class TrainerServiceTest {
                 () -> trainerService.selectByUsername("Sarah.Miller", "wrongPassword"));
 
         verifyNoInteractions(trainerDao);
-    }
-
-    @Test
-    @DisplayName("activate sets the flag on an inactive trainer")
-    void activateSetsActiveFlag() {
-        Trainer sarah = sarah(false);
-        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
-
-        trainerService.activate("Sarah.Miller", PASSWORD);
-
-        Assertions.assertTrue(sarah.getUser().isActive());
-        verify(trainerDao).update(sarah);
     }
 }

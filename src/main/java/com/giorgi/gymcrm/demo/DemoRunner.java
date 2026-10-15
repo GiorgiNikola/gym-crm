@@ -1,5 +1,6 @@
 package com.giorgi.gymcrm.demo;
 
+import com.giorgi.gymcrm.exception.StateConflictException;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
@@ -94,18 +95,18 @@ public class DemoRunner {
                 .getSpecialization().getName());
 
         log.info("=== 11, 12. Activate and deactivate ===");
-        facade.deactivateTrainee(johnUsername, johnPassword);
+        facade.changeStatus(johnUsername, johnPassword, false);
         log.info("Trainee active: {}", facade.selectTraineeProfile(johnUsername, johnPassword)
                 .getUser().isActive());
-        facade.activateTrainee(johnUsername, johnPassword);
+        facade.changeStatus(johnUsername, johnPassword, true);
         try {
-            facade.activateTrainee(johnUsername, johnPassword);
-        } catch (IllegalArgumentException e) {
+            facade.changeStatus(johnUsername, johnPassword, true);
+        } catch (StateConflictException e) {
             log.info("Non-idempotent as expected: {}", e.getMessage());
         }
 
         log.info("=== 7, 8. Change passwords ===");
-        facade.changeTraineePassword(johnUsername, johnPassword, "newPassword1");
+        facade.changePassword(johnUsername, johnPassword, "newPassword1");
         facade.selectTraineeProfile(johnUsername, "newPassword1");
         log.info("Trainee password changed and re-authenticated");
 
