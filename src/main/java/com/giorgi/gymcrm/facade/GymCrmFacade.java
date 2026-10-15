@@ -75,9 +75,8 @@ public class GymCrmFacade {
     }
 
     public Trainer updateTrainerProfile(String username, String password,
-                                        String firstName, String lastName,
-                                        String specializationName) {
-        return trainerService.updateProfile(username, password, firstName, lastName, specializationName);
+                                        String firstName, String lastName) {
+        return trainerService.updateProfile(username, password, firstName, lastName);
     }
 
     public Training addTraining(String username, String password,

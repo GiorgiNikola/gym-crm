@@ -90,8 +90,8 @@ public class DemoRunner {
         log.info("=== 9, 10. Update profiles ===");
         facade.updateTraineeProfile(johnUsername, johnPassword, "John", "Smith",
                 LocalDate.of(1998, 5, 14), "456 Park Avenue Boston");
-        facade.updateTrainerProfile(sarahUsername, sarahPassword, "Sarah", "Miller", "STRETCHING");
-        log.info("Sarah's specialization now: {}", facade.selectTrainerProfile(sarahUsername, sarahPassword)
+        facade.updateTrainerProfile(sarahUsername, sarahPassword, "Sarah", "Miller");
+        log.info("Sarah’s specialization is still: {}", facade.selectTrainerProfile(sarahUsername, sarahPassword)
                 .getSpecialization().getName());
 
         log.info("=== 11, 12. Activate and deactivate ===");

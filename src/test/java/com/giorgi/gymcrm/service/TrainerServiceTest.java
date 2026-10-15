@@ -151,20 +151,20 @@ class TrainerServiceTest {
     }
 
     @Test
-    @DisplayName("updateProfile overwrites the name and the specialization")
-    void updatesProfileAndSpecialization() {
+    @DisplayName("updateProfile changes the name but leaves the specialization alone")
+    void updatesNamesKeepsSpecialization() {
         Trainer sarah = sarah(true);
-        TrainingType stretching = new TrainingType();
+        TrainingType original = sarah.getSpecialization();
         when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
-        when(trainingTypeDao.findByName("STRETCHING")).thenReturn(Optional.of(stretching));
         when(trainerDao.update(sarah)).thenReturn(sarah);
 
         Trainer updated = trainerService.updateProfile("Sarah.Miller", PASSWORD,
-                "Sara", "Millerson", "STRETCHING");
+                "Sara", "Millerson");
 
         Assertions.assertEquals("Sara", updated.getUser().getFirstName());
         Assertions.assertEquals("Millerson", updated.getUser().getLastName());
-        Assertions.assertSame(stretching, updated.getSpecialization());
+        Assertions.assertSame(original, updated.getSpecialization());
+        verifyNoInteractions(trainingTypeDao);
     }
 
     @Test

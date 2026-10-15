@@ -83,17 +83,14 @@ public class TrainerService {
 
     @Transactional
     public Trainer updateProfile(String username, String password,
-                                 String firstName, String lastName,
-                                 String specializationName) {
+                                 String firstName, String lastName) {
         authenticationService.authenticate(username, password);
         requireText(firstName, "First name");
         requireText(lastName, "Last name");
-        requireText(specializationName, "Specialization");
 
         Trainer trainer = findOrThrow(username);
         trainer.getUser().setFirstName(firstName);
         trainer.getUser().setLastName(lastName);
-        trainer.setSpecialization(findTypeOrThrow(specializationName));
 
         Trainer updated = trainerDao.update(trainer);
         log.info("Updated trainer profile: {}", username);

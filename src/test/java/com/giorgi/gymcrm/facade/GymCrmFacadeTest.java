@@ -121,11 +121,11 @@ class GymCrmFacadeTest {
     @Test
     @DisplayName("updateTrainerProfile goes to the trainer service")
     void updatesTrainerProfile() {
-        when(trainerService.updateProfile("Sarah.Miller", PASSWORD, "Sarah", "Miller", "STRETCHING"))
+        when(trainerService.updateProfile("Sarah.Miller", PASSWORD, "Sarah", "Miller"))
                 .thenReturn(trainer);
 
         Assertions.assertSame(trainer, gymCrmFacade.updateTrainerProfile(
-                "Sarah.Miller", PASSWORD, "Sarah", "Miller", "STRETCHING"));
+                "Sarah.Miller", PASSWORD, "Sarah", "Miller"));
     }
 
     @Test
