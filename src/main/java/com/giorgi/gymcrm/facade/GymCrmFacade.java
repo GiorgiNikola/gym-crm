@@ -3,9 +3,11 @@ package com.giorgi.gymcrm.facade;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
+import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.service.TraineeService;
 import com.giorgi.gymcrm.service.TrainerService;
 import com.giorgi.gymcrm.service.TrainingService;
+import com.giorgi.gymcrm.service.TrainingTypeService;
 import com.giorgi.gymcrm.service.UserService;
 import org.springframework.stereotype.Component;
 
@@ -19,15 +21,18 @@ public class GymCrmFacade {
     private final TraineeService traineeService;
     private final TrainerService trainerService;
     private final TrainingService trainingService;
+    private final TrainingTypeService trainingTypeService;
     private final UserService userService;
 
     public GymCrmFacade(TraineeService traineeService,
                         TrainerService trainerService,
                         TrainingService trainingService,
+                        TrainingTypeService trainingTypeService,
                         UserService userService) {
         this.traineeService = traineeService;
         this.trainerService = trainerService;
         this.trainingService = trainingService;
+        this.trainingTypeService = trainingTypeService;
         this.userService = userService;
     }
 
@@ -97,5 +102,9 @@ public class GymCrmFacade {
                                               LocalDate fromDate, LocalDate toDate,
                                               String traineeName) {
         return trainingService.getTrainerTrainings(username, password, fromDate, toDate, traineeName);
+    }
+
+    public List<TrainingType> getTrainingTypes() {
+        return trainingTypeService.findAll();
     }
 }

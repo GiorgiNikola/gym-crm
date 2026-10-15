@@ -11,6 +11,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 @ExtendWith(SpringExtension.class)
@@ -36,5 +37,14 @@ class TrainingTypeDaoImplTest {
         Optional<TrainingType> found = trainingTypeDao.findByName("PILATES");
 
         Assertions.assertTrue(found.isEmpty());
+    }
+
+    @Test
+    @DisplayName("findAll returns the five seeded types, FITNESS first")
+    void findsAllTypes() {
+        List<TrainingType> types = trainingTypeDao.findAll();
+
+        Assertions.assertEquals(5, types.size());
+        Assertions.assertEquals("FITNESS", types.get(0).getName());
     }
 }

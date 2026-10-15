@@ -3,9 +3,11 @@ package com.giorgi.gymcrm.facade;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
+import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.service.TraineeService;
 import com.giorgi.gymcrm.service.TrainerService;
 import com.giorgi.gymcrm.service.TrainingService;
+import com.giorgi.gymcrm.service.TrainingTypeService;
 import com.giorgi.gymcrm.service.UserService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
@@ -38,6 +40,9 @@ class GymCrmFacadeTest {
 
     @Mock
     private TrainingService trainingService;
+
+    @Mock
+    private TrainingTypeService trainingTypeService;
 
     @Mock
     private UserService userService;
@@ -174,5 +179,14 @@ class GymCrmFacadeTest {
 
         Assertions.assertSame(trainings, gymCrmFacade.getTrainerTrainings("Sarah.Miller", PASSWORD,
                 TRAINING_DATE, TRAINING_DATE, "John"));
+    }
+
+    @Test
+    @DisplayName("getTrainingTypes goes to the training type service")
+    void getsTrainingTypes() {
+        List<TrainingType> types = List.of(new TrainingType());
+        when(trainingTypeService.findAll()).thenReturn(types);
+
+        Assertions.assertSame(types, gymCrmFacade.getTrainingTypes());
     }
 }
