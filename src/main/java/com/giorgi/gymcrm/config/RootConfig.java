@@ -1,7 +1,6 @@
 package com.giorgi.gymcrm.config;
 
 import com.giorgi.gymcrm.dao.TraineeDao;
-import com.giorgi.gymcrm.demo.DemoRunner;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
 import com.giorgi.gymcrm.service.TraineeService;
 import com.giorgi.gymcrm.util.CredentialGenerator;
@@ -14,8 +13,7 @@ import org.springframework.context.annotation.Import;
         TraineeDao.class,
         TraineeService.class,
         GymCrmFacade.class,
-        CredentialGenerator.class,
-        DemoRunner.class
+        CredentialGenerator.class
 })
 @Import(PersistenceConfig.class)
 public class RootConfig {
