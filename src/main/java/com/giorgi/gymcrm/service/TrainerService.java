@@ -1,23 +1,42 @@
 package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.dao.TrainerDao;
+import com.giorgi.gymcrm.dao.TrainingTypeDao;
+import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.TrainingType;
+import com.giorgi.gymcrm.model.User;
 import com.giorgi.gymcrm.util.CredentialGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import static com.giorgi.gymcrm.util.Validations.requireText;
 
 @Slf4j
 @Service
 public class TrainerService {
+
     private TrainerDao trainerDao;
+    private TrainingTypeDao trainingTypeDao;
+    private AuthenticationService authenticationService;
     private UsernameResolver usernameResolver;
     private CredentialGenerator credentialGenerator;
 
     @Autowired
     public void setTrainerDao(TrainerDao trainerDao) {
         this.trainerDao = trainerDao;
+    }
+
+    @Autowired
+    public void setTrainingTypeDao(TrainingTypeDao trainingTypeDao) {
+        this.trainingTypeDao = trainingTypeDao;
+    }
+
+    @Autowired
+    public void setAuthenticationService(AuthenticationService authenticationService) {
+        this.authenticationService = authenticationService;
     }
 
     @Autowired
@@ -30,73 +49,98 @@ public class TrainerService {
         this.credentialGenerator = credentialGenerator;
     }
 
-    public Trainer createTrainerProfile(String firstname,
-                                        String lastname,
-                                        boolean isActive,
-                                        TrainingType specialization) {
-        validateNames(firstname, lastname);
-        if (specialization == null) {
-            log.warn("Trainer validation failed, specialization is missing");
-            throw new IllegalArgumentException("Specialization must not be null");
-        }
+    @Transactional
+    public Trainer createProfile(String firstName, String lastName, String specializationName) {
+        requireText(firstName, "First name");
+        requireText(lastName, "Last name");
+        requireText(specializationName, "Specialization");
 
-        long id = trainerDao.generateId();
-        String username = usernameResolver.generateUsername(firstname, lastname);
-        String password = credentialGenerator.generatePassword();
+        TrainingType specialization = findTypeOrThrow(specializationName);
+
+        User user = User.builder()
+                .firstName(firstName)
+                .lastName(lastName)
+                .username(usernameResolver.generateUsername(firstName, lastName))
+                .password(credentialGenerator.generatePassword())
+                .isActive(true)
+                .build();
 
         Trainer trainer = Trainer.builder()
-                .userID(id)
-                .firstName(firstname)
-                .lastName(lastname)
-                .username(username)
-                .password(password)
-                .isActive(isActive)
+                .user(user)
                 .specialization(specialization)
                 .build();
 
-        Trainer savedTrainer = trainerDao.save(trainer);
-        log.info("Created trainer profile, id: {}, username: {}", savedTrainer.getUserID(), savedTrainer.getUsername());
-        return savedTrainer;
+        trainerDao.save(trainer);
+        log.info("Created trainer profile with username: {}", user.getUsername());
+        return trainer;
     }
 
-    public Trainer updateTrainerProfile(Trainer trainer) {
-        if (trainer == null) {
-            log.warn("Trainer update rejected, trainer is null");
-            throw new IllegalArgumentException("Trainer must not be null");
-        }
-
-        Trainer existingTrainer = trainerDao.findById(trainer.getUserID());
-        if (existingTrainer == null) {
-            log.warn("Trainer update rejected, trainer with id: {} does not exist", trainer.getUserID());
-            throw new IllegalArgumentException("Trainer with id: " + trainer.getUserID() + " does not exist");
-        }
-
-        validateNames(trainer.getFirstName(), trainer.getLastName());
-
-        Trainer updatedTrainer = trainer.toBuilder()
-                .username(existingTrainer.getUsername())
-                .password(existingTrainer.getPassword())
-                .specialization(existingTrainer.getSpecialization())
-                .build();
-
-        Trainer savedTrainer = trainerDao.update(updatedTrainer);
-        log.info("Updated trainer profile, id: {}, username: {}", savedTrainer.getUserID(), savedTrainer.getUsername());
-        return savedTrainer;
+    @Transactional(readOnly = true)
+    public Trainer selectByUsername(String username, String password) {
+        authenticationService.authenticate(username, password);
+        return findOrThrow(username);
     }
 
-    public Trainer selectTrainerProfile(long id) {
-        log.debug("Selecting trainer profile, id: {}", id);
-        return trainerDao.findById(id);
+    @Transactional
+    public void changePassword(String username, String password, String newPassword) {
+        authenticationService.authenticate(username, password);
+        requireText(newPassword, "New password");
+
+        Trainer trainer = findOrThrow(username);
+        trainer.getUser().setPassword(newPassword);
+        trainerDao.update(trainer);
+        log.info("Password changed for trainer: {}", username);
     }
 
-    private void validateNames(String firstName, String lastName) {
-        if (firstName == null || firstName.isBlank()) {
-            log.warn("Trainer validation failed, first name is missing");
-            throw new IllegalArgumentException("First name must not be null or blank");
+    @Transactional
+    public Trainer updateProfile(String username, String password,
+                                 String firstName, String lastName,
+                                 String specializationName) {
+        authenticationService.authenticate(username, password);
+        requireText(firstName, "First name");
+        requireText(lastName, "Last name");
+        requireText(specializationName, "Specialization");
+
+        Trainer trainer = findOrThrow(username);
+        trainer.getUser().setFirstName(firstName);
+        trainer.getUser().setLastName(lastName);
+        trainer.setSpecialization(findTypeOrThrow(specializationName));
+
+        Trainer updated = trainerDao.update(trainer);
+        log.info("Updated trainer profile: {}", username);
+        return updated;
+    }
+
+    @Transactional
+    public void activate(String username, String password) {
+        authenticationService.authenticate(username, password);
+        setActive(username, true);
+    }
+
+    @Transactional
+    public void deactivate(String username, String password) {
+        authenticationService.authenticate(username, password);
+        setActive(username, false);
+    }
+
+    private void setActive(String username, boolean active) {
+        Trainer trainer = findOrThrow(username);
+        if (trainer.getUser().isActive() == active) {
+            throw new IllegalArgumentException(
+                    "Trainer " + username + " is already " + (active ? "active" : "inactive"));
         }
-        if (lastName == null || lastName.isBlank()) {
-            log.warn("Trainer validation failed, last name is missing");
-            throw new IllegalArgumentException("Last name must not be null or blank");
-        }
+        trainer.getUser().setActive(active);
+        trainerDao.update(trainer);
+        log.info("Trainer {} set to {}", username, active ? "active" : "inactive");
+    }
+
+    private Trainer findOrThrow(String username) {
+        return trainerDao.findByUsername(username)
+                .orElseThrow(() -> new ProfileNotFoundException("Trainer not found: " + username));
+    }
+
+    private TrainingType findTypeOrThrow(String name) {
+        return trainingTypeDao.findByName(name)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown training type: " + name));
     }
 }
