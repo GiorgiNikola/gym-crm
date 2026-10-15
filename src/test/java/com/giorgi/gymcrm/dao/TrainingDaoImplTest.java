@@ -1,6 +1,7 @@
 package com.giorgi.gymcrm.dao;
 
 import com.giorgi.gymcrm.GymCrmApplication;
+import com.giorgi.gymcrm.config.RootConfig;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
@@ -23,7 +24,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = GymCrmApplication.class)
+@ContextConfiguration(classes = RootConfig.class)
 @Transactional
 class TrainingDaoImplTest {
 

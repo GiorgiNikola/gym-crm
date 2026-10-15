@@ -1,6 +1,7 @@
 package com.giorgi.gymcrm.dao;
 
 import com.giorgi.gymcrm.GymCrmApplication;
+import com.giorgi.gymcrm.config.RootConfig;
 import com.giorgi.gymcrm.model.TrainingType;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
@@ -14,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Optional;
 
 @ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = GymCrmApplication.class)
+@ContextConfiguration(classes = RootConfig.class)
 @Transactional
 class TrainingTypeDaoImplTest {
 
