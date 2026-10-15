@@ -53,7 +53,6 @@ class TrainingServiceTest {
     @InjectMocks
     private TrainingService trainingService;
 
-    // TrainingType is immutable with no setters, so the id goes in by reflection
     private TrainingType trainingType(long id) {
         TrainingType type = new TrainingType();
         ReflectionTestUtils.setField(type, "id", id);

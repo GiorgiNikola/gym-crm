@@ -47,7 +47,6 @@ public class PersistenceConfig {
             @Value("${hibernate.ddl-auto}") String ddlAuto) {
         Properties jpaProperties = new Properties();
         jpaProperties.setProperty("hibernate.hbm2ddl.auto", ddlAuto);
-        // keeps the snake_case column names, this is what spring boot set up for us
         jpaProperties.setProperty("hibernate.physical_naming_strategy",
                 "org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy");
 
@@ -64,7 +63,6 @@ public class PersistenceConfig {
         return new JpaTransactionManager(entityManagerFactory);
     }
 
-    // has to wait for the entity manager factory, that is what creates the tables
     @Bean
     @DependsOn("entityManagerFactory")
     public DataSourceInitializer dataSourceInitializer(DataSource dataSource) {
