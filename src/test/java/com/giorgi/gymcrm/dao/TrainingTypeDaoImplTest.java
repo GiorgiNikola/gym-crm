@@ -1,6 +1,5 @@
 package com.giorgi.gymcrm.dao;
 
-import com.giorgi.gymcrm.GymCrmApplication;
 import com.giorgi.gymcrm.config.RootConfig;
 import com.giorgi.gymcrm.model.TrainingType;
 import org.junit.jupiter.api.Assertions;

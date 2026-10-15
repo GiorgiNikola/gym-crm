@@ -130,10 +130,10 @@ class TrainerServiceTest {
     }
 
     @Test
-    @DisplayName("selectByUsername authenticates first and returns the trainer")
+    @DisplayName("selectByUsername authenticates first and returns the full profile")
     void selectsTrainerAfterAuthentication() {
         Trainer sarah = sarah(true);
-        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
+        when(trainerDao.findProfileByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
 
         Trainer found = trainerService.selectByUsername("Sarah.Miller", PASSWORD);
 
@@ -144,7 +144,7 @@ class TrainerServiceTest {
     @Test
     @DisplayName("selectByUsername throws when the trainer does not exist")
     void throwsWhenTrainerMissing() {
-        when(trainerDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
+        when(trainerDao.findProfileByUsername("Nobody.Here")).thenReturn(Optional.empty());
 
         Assertions.assertThrows(ProfileNotFoundException.class,
                 () -> trainerService.selectByUsername("Nobody.Here", PASSWORD));
@@ -155,7 +155,7 @@ class TrainerServiceTest {
     void updatesNamesKeepsSpecialization() {
         Trainer sarah = sarah(true);
         TrainingType original = sarah.getSpecialization();
-        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
+        when(trainerDao.findProfileByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
         when(trainerDao.update(sarah)).thenReturn(sarah);
 
         Trainer updated = trainerService.updateProfile("Sarah.Miller", PASSWORD,

@@ -1,5 +1,6 @@
 package com.giorgi.gymcrm.dao;
 
+import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -39,6 +40,22 @@ public class TrainerDaoImpl implements TrainerDao {
                     """, Trainer.class)
                 .setParameter("username", username)
                 .getResultStream()
+                .findFirst();
+    }
+
+    @Override
+    public Optional<Trainer> findProfileByUsername(String username) {
+        return entityManager.createQuery("""
+                    select t from Trainer t
+                    join fetch t.user u
+                    join fetch t.specialization
+                    left join fetch t.trainees te
+                    left join fetch te.user
+                    where u.username = :username
+                    """, Trainer.class)
+                .setParameter("username", username)
+                .getResultList()
+                .stream()
                 .findFirst();
     }
 

@@ -82,7 +82,7 @@ public class TraineeService {
     @Transactional(readOnly = true)
     public Trainee selectByUsername(String username, String password) {
         authenticationService.authenticate(username, password);
-        return findOrThrow(username);
+        return findProfileOrThrow(username);
     }
 
     @Transactional
@@ -93,7 +93,7 @@ public class TraineeService {
         requireText(firstName, "First name");
         requireText(lastName, "Last name");
 
-        Trainee trainee = findOrThrow(username);
+        Trainee trainee = findProfileOrThrow(username);
         trainee.getUser().setFirstName(firstName);
         trainee.getUser().setLastName(lastName);
         trainee.setDateOfBirth(dateOfBirth);
@@ -120,7 +120,7 @@ public class TraineeService {
             throw new IllegalArgumentException("Trainer usernames must not be null");
         }
 
-        Trainee trainee = findOrThrow(username);
+        Trainee trainee = findProfileOrThrow(username);
 
         Set<Trainer> trainers = new HashSet<>(trainerDao.findAllByUsernames(trainerUsernames));
         if (trainers.size() != trainerUsernames.size()) {
@@ -147,6 +147,11 @@ public class TraineeService {
 
     private Trainee findOrThrow(String username) {
         return traineeDao.findByUsername(username)
+                .orElseThrow(() -> new ProfileNotFoundException("Trainee not found: " + username));
+    }
+
+    private Trainee findProfileOrThrow(String username) {
+        return traineeDao.findProfileByUsername(username)
                 .orElseThrow(() -> new ProfileNotFoundException("Trainee not found: " + username));
     }
 }

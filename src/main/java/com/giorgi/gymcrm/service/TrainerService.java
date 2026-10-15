@@ -78,7 +78,7 @@ public class TrainerService {
     @Transactional(readOnly = true)
     public Trainer selectByUsername(String username, String password) {
         authenticationService.authenticate(username, password);
-        return findOrThrow(username);
+        return findProfileOrThrow(username);
     }
 
     @Transactional
@@ -88,7 +88,7 @@ public class TrainerService {
         requireText(firstName, "First name");
         requireText(lastName, "Last name");
 
-        Trainer trainer = findOrThrow(username);
+        Trainer trainer = findProfileOrThrow(username);
         trainer.getUser().setFirstName(firstName);
         trainer.getUser().setLastName(lastName);
 
@@ -97,8 +97,8 @@ public class TrainerService {
         return updated;
     }
 
-    private Trainer findOrThrow(String username) {
-        return trainerDao.findByUsername(username)
+    private Trainer findProfileOrThrow(String username) {
+        return trainerDao.findProfileByUsername(username)
                 .orElseThrow(() -> new ProfileNotFoundException("Trainer not found: " + username));
     }
 

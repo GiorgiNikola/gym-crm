@@ -120,10 +120,10 @@ class TraineeServiceTest {
     }
 
     @Test
-    @DisplayName("selectByUsername authenticates first and returns the trainee")
+    @DisplayName("selectByUsername authenticates first and returns the full profile")
     void selectsTraineeAfterAuthentication() {
         Trainee john = john(true);
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
 
         Trainee found = traineeService.selectByUsername("John.Smith", PASSWORD);
 
@@ -134,18 +134,17 @@ class TraineeServiceTest {
     @Test
     @DisplayName("selectByUsername throws when the trainee does not exist")
     void throwsWhenTraineeMissing() {
-        when(traineeDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
+        when(traineeDao.findProfileByUsername("Nobody.Here")).thenReturn(Optional.empty());
 
         Assertions.assertThrows(ProfileNotFoundException.class,
                 () -> traineeService.selectByUsername("Nobody.Here", PASSWORD));
     }
 
-
     @Test
     @DisplayName("updateProfile overwrites the name, date of birth and address")
     void updatesProfileFields() {
         Trainee john = john(true);
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
         when(traineeDao.update(john)).thenReturn(john);
 
         Trainee updated = traineeService.updateProfile("John.Smith", PASSWORD,
@@ -175,7 +174,7 @@ class TraineeServiceTest {
         john.getTrainers().add(trainer("Laura", "Davis"));
         Trainer sarah = trainer("Sarah", "Miller");
         Trainer robert = trainer("Robert", "Taylor");
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
         when(trainerDao.findAllByUsernames(Set.of("Sarah.Miller", "Robert.Taylor")))
                 .thenReturn(List.of(sarah, robert));
         when(traineeDao.update(john)).thenReturn(john);
@@ -188,10 +187,25 @@ class TraineeServiceTest {
     }
 
     @Test
+    @DisplayName("updateTrainers with an empty set unassigns every trainer")
+    void emptySetClearsTrainers() {
+        Trainee john = john(true);
+        john.getTrainers().add(trainer("Laura", "Davis"));
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(trainerDao.findAllByUsernames(Set.of())).thenReturn(List.of());
+        when(traineeDao.update(john)).thenReturn(john);
+
+        Trainee updated = traineeService.updateTrainers("John.Smith", PASSWORD, Set.of());
+
+        Assertions.assertTrue(updated.getTrainers().isEmpty());
+        verify(traineeDao).update(john);
+    }
+
+    @Test
     @DisplayName("updateTrainers throws when one trainer username is unknown")
     void updateTrainersThrowsForUnknownTrainer() {
         Trainer sarah = trainer("Sarah", "Miller");
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john(true)));
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john(true)));
         when(trainerDao.findAllByUsernames(Set.of("Sarah.Miller", "Nobody.Here")))
                 .thenReturn(List.of(sarah));
 
@@ -223,21 +237,6 @@ class TraineeServiceTest {
                 () -> traineeService.updateTrainers("John.Smith", PASSWORD, null));
 
         verify(traineeDao, never()).update(any(Trainee.class));
-    }
-
-    @Test
-    @DisplayName("updateTrainers with an empty set unassigns every trainer")
-    void emptySetClearsTrainers() {
-        Trainee john = john(true);
-        john.getTrainers().add(trainer("Laura", "Davis"));
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
-        when(trainerDao.findAllByUsernames(Set.of())).thenReturn(List.of());
-        when(traineeDao.update(john)).thenReturn(john);
-
-        Trainee updated = traineeService.updateTrainers("John.Smith", PASSWORD, Set.of());
-
-        Assertions.assertTrue(updated.getTrainers().isEmpty());
-        verify(traineeDao).update(john);
     }
 
     @Test
