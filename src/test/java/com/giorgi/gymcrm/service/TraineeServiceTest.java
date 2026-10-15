@@ -226,6 +226,21 @@ class TraineeServiceTest {
     }
 
     @Test
+    @DisplayName("updateTrainers with an empty set unassigns every trainer")
+    void emptySetClearsTrainers() {
+        Trainee john = john(true);
+        john.getTrainers().add(trainer("Laura", "Davis"));
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(trainerDao.findAllByUsernames(Set.of())).thenReturn(List.of());
+        when(traineeDao.update(john)).thenReturn(john);
+
+        Trainee updated = traineeService.updateTrainers("John.Smith", PASSWORD, Set.of());
+
+        Assertions.assertTrue(updated.getTrainers().isEmpty());
+        verify(traineeDao).update(john);
+    }
+
+    @Test
     @DisplayName("findUnassignedTrainers returns what the trainer dao gives back")
     void findsUnassignedTrainers() {
         List<Trainer> unassigned = List.of(trainer("Sarah", "Miller"));
