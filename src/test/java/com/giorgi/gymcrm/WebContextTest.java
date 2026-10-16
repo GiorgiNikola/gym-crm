@@ -1,15 +1,22 @@
 package com.giorgi.gymcrm;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.giorgi.gymcrm.config.RootConfig;
 import com.giorgi.gymcrm.config.WebConfig;
+import com.giorgi.gymcrm.dto.RegistrationResponse;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.web.RequestLoggingFilter;
 import com.giorgi.gymcrm.web.TransactionIdFilter;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -21,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
+import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -28,6 +36,7 @@ import java.util.Base64;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -71,6 +80,67 @@ class WebContextTest {
     private String basic(String user, String secret) {
         return "Basic " + Base64.getEncoder()
                 .encodeToString((user + ":" + secret).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private RegistrationResponse registerTrainee(String firstName, String lastName) throws Exception {
+        String body = mockMvc.perform(post("/trainees")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"firstName\":\"" + firstName + "\",\"lastName\":\"" + lastName + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return new ObjectMapper().readValue(body, RegistrationResponse.class);
+    }
+
+    @Test
+    @DisplayName("a trainee registered over http can log in right away")
+    void registersTraineeThatCanLogIn() throws Exception {
+        RegistrationResponse registered = registerTrainee("Mary", "Jones");
+
+        mockMvc.perform(get("/auth/login")
+                        .header(HttpHeaders.AUTHORIZATION, basic(registered.username(), registered.password())))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("the same name twice gets a numbered username the second time")
+    void numbersTheSecondUsername() throws Exception {
+        Assertions.assertEquals("Mary.Jones", registerTrainee("Mary", "Jones").username());
+        Assertions.assertEquals("Mary.Jones1", registerTrainee("Mary", "Jones").username());
+    }
+
+    @Test
+    @DisplayName("a trainer registers with a specialization that the training types list returns")
+    void registersTrainerWithRealSpecialization() throws Exception {
+        mockMvc.perform(post("/trainers")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"firstName":"Sarah","lastName":"Miller","specialization":"YOGA"}"""))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value("Sarah.Miller"));
+    }
+
+    @Test
+    @DisplayName("the generated password never reaches the logs")
+    void keepsGeneratedPasswordOutOfTheLogs() throws Exception {
+        Logger filterLogger = (Logger) LoggerFactory.getLogger(RequestLoggingFilter.class);
+        Level originalLevel = filterLogger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        filterLogger.setLevel(Level.DEBUG);
+        filterLogger.addAppender(appender);
+
+        try {
+            String password = registerTrainee("Mary", "Jones").password();
+
+            Assertions.assertFalse(appender.list.isEmpty());
+            for (ILoggingEvent event : appender.list) {
+                Assertions.assertFalse(event.getFormattedMessage().contains(password), event.getFormattedMessage());
+            }
+        } finally {
+            filterLogger.detachAppender(appender);
+            filterLogger.setLevel(originalLevel);
+            appender.stop();
+        }
     }
 
     @Test

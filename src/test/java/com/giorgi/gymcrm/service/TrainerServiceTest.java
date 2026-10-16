@@ -19,7 +19,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.Mockito.*;
@@ -46,6 +48,12 @@ class TrainerServiceTest {
 
     @InjectMocks
     private TrainerService trainerService;
+
+    private TrainingType trainingType(String name) {
+        TrainingType type = new TrainingType();
+        ReflectionTestUtils.setField(type, "name", name);
+        return type;
+    }
 
     private Trainer sarah(boolean active) {
         User user = User.builder()
@@ -119,13 +127,16 @@ class TrainerServiceTest {
     }
 
     @Test
-    @DisplayName("createProfile throws for a specialization name that does not exist")
+    @DisplayName("createProfile throws for an unknown specialization and lists the valid names")
     void throwsForUnknownSpecialization() {
         when(trainingTypeDao.findByName("PILATES")).thenReturn(Optional.empty());
+        when(trainingTypeDao.findAll()).thenReturn(List.of(trainingType("FITNESS"), trainingType("YOGA")));
 
-        Assertions.assertThrows(IllegalArgumentException.class,
+        IllegalArgumentException thrown = Assertions.assertThrows(IllegalArgumentException.class,
                 () -> trainerService.createProfile("Sarah", "Miller", "PILATES"));
 
+        Assertions.assertEquals("Unknown training type: PILATES. Valid values: FITNESS, YOGA",
+                thrown.getMessage());
         verifyNoInteractions(trainerDao);
     }
 

@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.stream.Collectors;
+
 import static com.giorgi.gymcrm.util.Validations.requireText;
 
 @Slf4j
@@ -104,6 +106,13 @@ public class TrainerService {
 
     private TrainingType findTypeOrThrow(String name) {
         return trainingTypeDao.findByName(name)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown training type: " + name));
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown training type: " + name + ". Valid values: " + validTypeNames()));
+    }
+
+    private String validTypeNames() {
+        return trainingTypeDao.findAll().stream()
+                .map(TrainingType::getName)
+                .collect(Collectors.joining(", "));
     }
 }
