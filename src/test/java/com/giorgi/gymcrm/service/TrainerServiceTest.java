@@ -1,7 +1,6 @@
 package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.dao.TrainerDao;
-import com.giorgi.gymcrm.dao.TrainingTypeDao;
 import com.giorgi.gymcrm.exception.AuthenticationException;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.model.Trainer;
@@ -35,7 +34,7 @@ class TrainerServiceTest {
     private TrainerDao trainerDao;
 
     @Mock
-    private TrainingTypeDao trainingTypeDao;
+    private TrainingTypeService trainingTypeService;
 
     @Mock
     private AuthenticationService authenticationService;
@@ -75,7 +74,7 @@ class TrainerServiceTest {
     @DisplayName("createProfile builds the trainer with a resolved username and generated password")
     void savesTrainerWithGeneratedCredentials() {
         TrainingType yoga = new TrainingType();
-        when(trainingTypeDao.findByName("YOGA")).thenReturn(Optional.of(yoga));
+        when(trainingTypeService.requireByName("YOGA")).thenReturn(yoga);
         when(usernameResolver.generateUsername("Sarah", "Miller")).thenReturn("Sarah.Miller");
         when(credentialGenerator.generatePassword()).thenReturn(PASSWORD);
 
@@ -129,8 +128,8 @@ class TrainerServiceTest {
     @Test
     @DisplayName("createProfile throws for an unknown specialization and lists the valid names")
     void throwsForUnknownSpecialization() {
-        when(trainingTypeDao.findByName("PILATES")).thenReturn(Optional.empty());
-        when(trainingTypeDao.findAll()).thenReturn(List.of(trainingType("FITNESS"), trainingType("YOGA")));
+        when(trainingTypeService.requireByName("PILATES")).thenThrow(new IllegalArgumentException(
+                "Unknown training type: PILATES. Valid values: FITNESS, YOGA"));
 
         IllegalArgumentException thrown = Assertions.assertThrows(IllegalArgumentException.class,
                 () -> trainerService.createProfile("Sarah", "Miller", "PILATES"));
@@ -175,7 +174,7 @@ class TrainerServiceTest {
         Assertions.assertEquals("Sara", updated.getUser().getFirstName());
         Assertions.assertEquals("Millerson", updated.getUser().getLastName());
         Assertions.assertSame(original, updated.getSpecialization());
-        verifyNoInteractions(trainingTypeDao);
+        verifyNoInteractions(trainingTypeService);
     }
 
     @Test

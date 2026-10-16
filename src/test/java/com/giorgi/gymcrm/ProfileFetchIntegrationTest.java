@@ -31,7 +31,9 @@ import java.time.LocalDate;
 import java.util.Base64;
 import java.util.Set;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -166,6 +168,86 @@ class ProfileFetchIntegrationTest {
                 .andExpect(jsonPath("$.specialization").value("FITNESS"))
                 .andExpect(jsonPath("$.trainees.length()").value(1))
                 .andExpect(jsonPath("$.trainees[0].username").value(trainee.getUsername()));
+    }
+
+    private void logTraining(String name, LocalDate date) throws Exception {
+        mockMvc.perform(post("/trainings")
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"traineeUsername\":\"" + trainee.getUsername() + "\""
+                                + ",\"trainerUsername\":\"" + firstTrainer.getUsername() + "\""
+                                + ",\"trainingName\":\"" + name + "\""
+                                + ",\"trainingDate\":\"" + date + "\""
+                                + ",\"trainingDuration\":60}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("logged trainings come back in date order with the trainer's own type")
+    void listsLoggedTrainings() throws Exception {
+        logTraining("Evening strength", LocalDate.of(2026, 8, 15));
+        logTraining("Morning strength", LocalDate.of(2026, 8, 1));
+
+        mockMvc.perform(get("/trainees/{username}/trainings", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].trainingName").value("Morning strength"))
+                .andExpect(jsonPath("$[0].trainingDate").value("2026-08-01"))
+                .andExpect(jsonPath("$[0].trainingType").value("FITNESS"))
+                .andExpect(jsonPath("$[0].trainingDuration").value(60))
+                .andExpect(jsonPath("$[0].trainerUsername").value(firstTrainer.getUsername()))
+                .andExpect(jsonPath("$[0].trainerName").value("Adam Brown"))
+                .andExpect(jsonPath("$[1].trainingName").value("Evening strength"));
+    }
+
+    @Test
+    @DisplayName("the training list can be narrowed by date and by the trainer's last name")
+    void filtersLoggedTrainings() throws Exception {
+        logTraining("Morning strength", LocalDate.of(2026, 8, 1));
+        logTraining("Evening strength", LocalDate.of(2026, 8, 15));
+
+        mockMvc.perform(get("/trainees/{username}/trainings", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+                        .param("from", "2026-08-10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].trainingName").value("Evening strength"));
+
+        mockMvc.perform(get("/trainees/{username}/trainings", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+                        .param("trainerName", "Brown"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    @DisplayName("the trainer sees the trainee on their own training list")
+    void listsTrainingsForTheTrainer() throws Exception {
+        logTraining("Morning strength", LocalDate.of(2026, 8, 1));
+
+        mockMvc.perform(get("/trainers/{username}/trainings", firstTrainer.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(firstTrainer)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].traineeUsername").value(trainee.getUsername()))
+                .andExpect(jsonPath("$[0].traineeName").value("John Smith"))
+                .andExpect(jsonPath("$[0].trainingType").value("FITNESS"));
+    }
+
+    @Test
+    @DisplayName("deleting the trainee takes their trainings off the trainer's list")
+    void cascadesTrainingsWhenTheTraineeGoes() throws Exception {
+        logTraining("Morning strength", LocalDate.of(2026, 8, 1));
+
+        mockMvc.perform(delete("/trainees/{username}", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/trainers/{username}/trainings", firstTrainer.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(firstTrainer)))
+                .andExpect(status().isOk())
+                .andExpect(content().string("[]"));
     }
 
     @Test

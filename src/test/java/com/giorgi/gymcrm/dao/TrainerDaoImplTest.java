@@ -117,6 +117,16 @@ class TrainerDaoImplTest {
     }
 
     @Test
+    @DisplayName("findAllByUsernames returns nothing for an empty or missing request")
+    void findAllByEmptyUsernamesReturnsNothing() {
+        trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));
+        entityManager.flush();
+
+        Assertions.assertTrue(trainerDao.findAllByUsernames(List.of()).isEmpty());
+        Assertions.assertTrue(trainerDao.findAllByUsernames(null).isEmpty());
+    }
+
+    @Test
     @DisplayName("findNotAssignedToTrainee sorts the trainers by username")
     void findNotAssignedSortsByUsername() {
         trainerDao.save(trainer("Zoe", "Adams", "YOGA", true));

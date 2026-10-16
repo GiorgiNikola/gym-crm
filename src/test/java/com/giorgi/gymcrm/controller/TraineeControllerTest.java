@@ -4,6 +4,7 @@ import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
+import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
 import com.giorgi.gymcrm.web.BasicCredentialsResolver;
@@ -379,6 +380,79 @@ class TraineeControllerTest {
         mockMvc.perform(put("/trainees/{username}/trainers", USERNAME)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"trainerUsernames\":[\"Adam.Brown\"]}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private Training training(String name, LocalDate date) {
+        TrainingType type = new TrainingType();
+        ReflectionTestUtils.setField(type, "name", "YOGA");
+
+        return Training.builder()
+                .trainer(Trainer.builder()
+                        .user(User.builder()
+                                .username("Sarah.Miller")
+                                .firstName("Sarah")
+                                .lastName("Miller")
+                                .build())
+                        .build())
+                .name(name)
+                .type(type)
+                .date(date)
+                .duration(60L)
+                .build();
+    }
+
+    @Test
+    @DisplayName("the trainings come back with the trainer and the type")
+    void listsTrainings() throws Exception {
+        when(gymCrmFacade.getTraineeTrainings(USERNAME, PASSWORD, null, null, null, null))
+                .thenReturn(List.of(training("Morning Yoga", LocalDate.of(2026, 8, 1))));
+
+        mockMvc.perform(get("/trainees/{username}/trainings", USERNAME)
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].trainingName").value("Morning Yoga"))
+                .andExpect(jsonPath("$[0].trainingDate").value("2026-08-01"))
+                .andExpect(jsonPath("$[0].trainingType").value("YOGA"))
+                .andExpect(jsonPath("$[0].trainingDuration").value(60))
+                .andExpect(jsonPath("$[0].trainerUsername").value("Sarah.Miller"))
+                .andExpect(jsonPath("$[0].trainerName").value("Sarah Miller"));
+    }
+
+    @Test
+    @DisplayName("every training filter reaches the facade, dates included")
+    void passesTrainingFiltersToTheFacade() throws Exception {
+        when(gymCrmFacade.getTraineeTrainings(USERNAME, PASSWORD,
+                LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), "Miller", "YOGA"))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/trainees/{username}/trainings", USERNAME)
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
+                        .param("from", "2026-08-01")
+                        .param("to", "2026-08-31")
+                        .param("trainerName", "Miller")
+                        .param("trainingType", "YOGA"))
+                .andExpect(status().isOk());
+
+        verify(gymCrmFacade).getTraineeTrainings(USERNAME, PASSWORD,
+                LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), "Miller", "YOGA");
+    }
+
+    @Test
+    @DisplayName("reading somebody else's trainings comes back as 403")
+    void rejectsTrainingsForOtherUser() throws Exception {
+        mockMvc.perform(get("/trainees/{username}/trainings", "Sarah.Miller")
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD)))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(gymCrmFacade);
+    }
+
+    @Test
+    @DisplayName("reading trainings without credentials comes back as 401")
+    void rejectsTrainingsWithoutCredentials() throws Exception {
+        mockMvc.perform(get("/trainees/{username}/trainings", USERNAME))
                 .andExpect(status().isUnauthorized());
     }
 }

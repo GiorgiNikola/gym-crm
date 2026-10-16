@@ -3,6 +3,7 @@ package com.giorgi.gymcrm.controller;
 import com.giorgi.gymcrm.dto.RegistrationResponse;
 import com.giorgi.gymcrm.dto.TrainerProfileResponse;
 import com.giorgi.gymcrm.dto.TrainerRegistrationRequest;
+import com.giorgi.gymcrm.dto.TrainerTrainingResponse;
 import com.giorgi.gymcrm.dto.UpdateTrainerRequest;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
 import com.giorgi.gymcrm.model.User;
@@ -15,6 +16,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,10 +24,13 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.time.LocalDate;
+import java.util.List;
 
 @Tag(name = "Trainers", description = "Trainer profiles")
 @RestController
@@ -92,5 +97,32 @@ public class TrainerController {
         RequestGuards.requireSelf(username, credentials);
         return TrainerProfileResponse.from(gymCrmFacade.updateTrainerProfile(
                 username, credentials.password(), request.firstName(), request.lastName(), request.isActive()));
+    }
+
+    @GetMapping("/{username}/trainings")
+    @SecurityRequirement(name = "basicAuth")
+    @Operation(summary = "Lists the trainings of a trainer, oldest first")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "The matching trainings"),
+            @ApiResponse(responseCode = "400", description = "from is after to"),
+            @ApiResponse(responseCode = "401", description = "The credentials are missing, malformed or wrong"),
+            @ApiResponse(responseCode = "403", description = "The credentials belong to another user")
+    })
+    public List<TrainerTrainingResponse> getTrainings(
+            @PathVariable String username,
+            @Parameter(hidden = true) Credentials credentials,
+            @Parameter(description = "Earliest training date to include, as yyyy-MM-dd", example = "2026-08-01")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "Latest training date to include, as yyyy-MM-dd", example = "2026-08-31")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @Parameter(description = "Part of the trainee's first name, last name or full name, "
+                    + "case insensitive", example = "Smith")
+            @RequestParam(required = false) String traineeName) {
+        RequestGuards.requireSelf(username, credentials);
+
+        return gymCrmFacade.getTrainerTrainings(username, credentials.password(), from, to, traineeName)
+                .stream()
+                .map(TrainerTrainingResponse::from)
+                .toList();
     }
 }

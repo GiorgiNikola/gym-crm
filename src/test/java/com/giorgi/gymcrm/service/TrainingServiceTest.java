@@ -3,7 +3,6 @@ package com.giorgi.gymcrm.service;
 import com.giorgi.gymcrm.dao.TraineeDao;
 import com.giorgi.gymcrm.dao.TrainerDao;
 import com.giorgi.gymcrm.dao.TrainingDao;
-import com.giorgi.gymcrm.dao.TrainingTypeDao;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
@@ -45,7 +44,7 @@ class TrainingServiceTest {
     private TrainerDao trainerDao;
 
     @Mock
-    private TrainingTypeDao trainingTypeDao;
+    private TrainingTypeService trainingTypeService;
 
     @Mock
     private AuthenticationService authenticationService;
@@ -77,17 +76,16 @@ class TrainingServiceTest {
     }
 
     @Test
-    @DisplayName("addTraining saves the training with the resolved trainee, trainer and type")
+    @DisplayName("addTraining takes the type from the trainer's specialization")
     void addsTrainingWithResolvedEntities() {
         TrainingType yoga = trainingType(2L);
         Trainee john = john();
         Trainer sarah = sarah(yoga);
         when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
         when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
-        when(trainingTypeDao.findByName("YOGA")).thenReturn(Optional.of(yoga));
 
         trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
-                "Morning Yoga", "YOGA", DATE, 60L);
+                "Morning Yoga", DATE, 60L);
 
         ArgumentCaptor<Training> captor = ArgumentCaptor.forClass(Training.class);
         verify(trainingDao).save(captor.capture());
@@ -108,7 +106,7 @@ class TrainingServiceTest {
 
         Assertions.assertThrows(ProfileNotFoundException.class,
                 () -> trainingService.addTraining("John.Smith", PASSWORD, "Nobody.Here", "Sarah.Miller",
-                        "Morning Yoga", "YOGA", DATE, 60L));
+                        "Morning Yoga", DATE, 60L));
 
         verifyNoInteractions(trainingDao);
     }
@@ -121,21 +119,7 @@ class TrainingServiceTest {
 
         Assertions.assertThrows(ProfileNotFoundException.class,
                 () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Nobody.Here",
-                        "Morning Yoga", "YOGA", DATE, 60L));
-
-        verifyNoInteractions(trainingDao);
-    }
-
-    @Test
-    @DisplayName("addTraining throws for an unknown training type")
-    void throwsForUnknownTrainingType() {
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john()));
-        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah(trainingType(2L))));
-        when(trainingTypeDao.findByName("PILATES")).thenReturn(Optional.empty());
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
-                        "Morning Yoga", "PILATES", DATE, 60L));
+                        "Morning Yoga", DATE, 60L));
 
         verifyNoInteractions(trainingDao);
     }
@@ -145,7 +129,7 @@ class TrainingServiceTest {
     void rejectsNullDate() {
         Assertions.assertThrows(IllegalArgumentException.class,
                 () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
-                        "Morning Yoga", "YOGA", null, 60L));
+                        "Morning Yoga", null, 60L));
 
         verifyNoInteractions(trainingDao);
     }
@@ -157,21 +141,7 @@ class TrainingServiceTest {
     void rejectsInvalidDuration(Long duration) {
         Assertions.assertThrows(IllegalArgumentException.class,
                 () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
-                        "Morning Yoga", "YOGA", DATE, duration));
-
-        verifyNoInteractions(trainingDao);
-    }
-
-    @Test
-    @DisplayName("addTraining throws when the type does not match the trainer's specialization")
-    void throwsWhenTypeDoesNotMatchSpecialization() {
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john()));
-        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah(trainingType(2L))));
-        when(trainingTypeDao.findByName("ZUMBA")).thenReturn(Optional.of(trainingType(3L)));
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
-                        "Zumba Class", "ZUMBA", DATE, 50L));
+                        "Morning Yoga", DATE, duration));
 
         verifyNoInteractions(trainingDao);
     }
@@ -200,5 +170,65 @@ class TrainingServiceTest {
 
         Assertions.assertSame(expected, trainings);
         verify(authenticationService).authenticate("Sarah.Miller", PASSWORD);
+    }
+
+    @Test
+    @DisplayName("getTraineeTrainings works without any filter")
+    void acceptsMissingTraineeFilters() {
+        trainingService.getTraineeTrainings("John.Smith", PASSWORD, null, null, null, null);
+
+        verify(trainingDao).findTraineeTrainings("John.Smith", null, null, null, null);
+        verifyNoInteractions(trainingTypeService);
+    }
+
+    @Test
+    @DisplayName("getTraineeTrainings accepts a range with no end")
+    void acceptsOpenEndedRange() {
+        trainingService.getTraineeTrainings("John.Smith", PASSWORD, DATE, null, null, null);
+
+        verify(trainingDao).findTraineeTrainings("John.Smith", DATE, null, null, null);
+    }
+
+    @Test
+    @DisplayName("a blank training type filter is passed along without a lookup")
+    void ignoresBlankTypeFilter() {
+        trainingService.getTraineeTrainings("John.Smith", PASSWORD, null, null, null, "  ");
+
+        verify(trainingDao).findTraineeTrainings("John.Smith", null, null, null, "  ");
+        verifyNoInteractions(trainingTypeService);
+    }
+
+    @Test
+    @DisplayName("getTraineeTrainings rejects a from date after the to date")
+    void rejectsReversedTraineeRange() {
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> trainingService.getTraineeTrainings("John.Smith", PASSWORD,
+                        DATE.plusDays(1), DATE, null, null));
+
+        verifyNoInteractions(trainingDao);
+    }
+
+    @Test
+    @DisplayName("getTrainerTrainings rejects a from date after the to date")
+    void rejectsReversedTrainerRange() {
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> trainingService.getTrainerTrainings("Sarah.Miller", PASSWORD,
+                        DATE.plusDays(1), DATE, null));
+
+        verifyNoInteractions(trainingDao);
+    }
+
+    @Test
+    @DisplayName("an unknown training type filter comes back with the valid names")
+    void rejectsUnknownTypeFilter() {
+        when(trainingTypeService.requireByName("PILATES")).thenThrow(new IllegalArgumentException(
+                "Unknown training type: PILATES. Valid values: FITNESS, YOGA"));
+
+        IllegalArgumentException thrown = Assertions.assertThrows(IllegalArgumentException.class,
+                () -> trainingService.getTraineeTrainings("John.Smith", PASSWORD, null, null, null, "PILATES"));
+
+        Assertions.assertEquals("Unknown training type: PILATES. Valid values: FITNESS, YOGA",
+                thrown.getMessage());
+        verifyNoInteractions(trainingDao);
     }
 }

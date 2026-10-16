@@ -153,10 +153,10 @@ class GymCrmFacadeTest {
     @DisplayName("addTraining goes to the training service")
     void addsTraining() {
         when(trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
-                "Morning Yoga", "YOGA", TRAINING_DATE, 60L)).thenReturn(training);
+                "Morning Yoga", TRAINING_DATE, 60L)).thenReturn(training);
 
         Assertions.assertSame(training, gymCrmFacade.addTraining("John.Smith", PASSWORD,
-                "John.Smith", "Sarah.Miller", "Morning Yoga", "YOGA", TRAINING_DATE, 60L));
+                "John.Smith", "Sarah.Miller", "Morning Yoga", TRAINING_DATE, 60L));
     }
 
     @Test

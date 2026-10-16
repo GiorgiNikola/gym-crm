@@ -212,6 +212,19 @@ class TraineeDaoImplTest {
     }
 
     @Test
+    @DisplayName("delete also works on a trainee that left the persistence context")
+    void deletesDetachedTrainee() {
+        Trainee john = traineeDao.save(trainee("John", "Smith"));
+        entityManager.flush();
+        entityManager.clear();
+
+        traineeDao.delete(john);
+        entityManager.flush();
+
+        Assertions.assertTrue(traineeDao.findByUsername("John.Smith").isEmpty());
+    }
+
+    @Test
     @DisplayName("a taken username comes out of the dao as a spring data access exception")
     void translatesDuplicateUsername() {
         traineeDao.save(trainee("John", "Smith"));

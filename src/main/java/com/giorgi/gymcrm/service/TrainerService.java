@@ -1,7 +1,6 @@
 package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.dao.TrainerDao;
-import com.giorgi.gymcrm.dao.TrainingTypeDao;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.TrainingType;
@@ -12,8 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.stream.Collectors;
-
 import static com.giorgi.gymcrm.util.Validations.requireText;
 
 @Slf4j
@@ -21,7 +18,7 @@ import static com.giorgi.gymcrm.util.Validations.requireText;
 public class TrainerService {
 
     private TrainerDao trainerDao;
-    private TrainingTypeDao trainingTypeDao;
+    private TrainingTypeService trainingTypeService;
     private AuthenticationService authenticationService;
     private UsernameResolver usernameResolver;
     private CredentialGenerator credentialGenerator;
@@ -32,8 +29,8 @@ public class TrainerService {
     }
 
     @Autowired
-    public void setTrainingTypeDao(TrainingTypeDao trainingTypeDao) {
-        this.trainingTypeDao = trainingTypeDao;
+    public void setTrainingTypeService(TrainingTypeService trainingTypeService) {
+        this.trainingTypeService = trainingTypeService;
     }
 
     @Autowired
@@ -57,7 +54,7 @@ public class TrainerService {
         requireText(lastName, "Last name");
         requireText(specializationName, "Specialization");
 
-        TrainingType specialization = findTypeOrThrow(specializationName);
+        TrainingType specialization = trainingTypeService.requireByName(specializationName);
 
         User user = User.builder()
                 .firstName(firstName)
@@ -108,17 +105,5 @@ public class TrainerService {
     private Trainer findProfileOrThrow(String username) {
         return trainerDao.findProfileByUsername(username)
                 .orElseThrow(() -> new ProfileNotFoundException("Trainer not found: " + username));
-    }
-
-    private TrainingType findTypeOrThrow(String name) {
-        return trainingTypeDao.findByName(name)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown training type: " + name + ". Valid values: " + validTypeNames()));
-    }
-
-    private String validTypeNames() {
-        return trainingTypeDao.findAll().stream()
-                .map(TrainingType::getName)
-                .collect(Collectors.joining(", "));
     }
 }

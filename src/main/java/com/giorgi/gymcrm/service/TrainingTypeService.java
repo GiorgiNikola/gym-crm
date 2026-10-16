@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -33,5 +34,18 @@ public class TrainingTypeService {
         List<TrainingType> types = trainingTypeDao.findAll();
         log.debug("Listing {} training types", types.size());
         return types;
+    }
+
+    @Transactional(readOnly = true)
+    public TrainingType requireByName(String name) {
+        return trainingTypeDao.findByName(name)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown training type: " + name + ". Valid values: " + validNames()));
+    }
+
+    private String validNames() {
+        return trainingTypeDao.findAll().stream()
+                .map(TrainingType::getName)
+                .collect(Collectors.joining(", "));
     }
 }

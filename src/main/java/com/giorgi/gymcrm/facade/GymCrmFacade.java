@@ -90,10 +90,9 @@ public class GymCrmFacade {
 
     public Training addTraining(String username, String password,
                                 String traineeUsername, String trainerUsername,
-                                String name, String typeName,
-                                LocalDate date, Long duration) {
+                                String name, LocalDate date, Long duration) {
         return trainingService.addTraining(username, password, traineeUsername, trainerUsername,
-                name, typeName, date, duration);
+                name, date, duration);
     }
 
     public List<Training> getTraineeTrainings(String username, String password,

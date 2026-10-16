@@ -3,6 +3,7 @@ package com.giorgi.gymcrm.controller;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
+import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
 import com.giorgi.gymcrm.web.BasicCredentialsResolver;
@@ -19,6 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -205,6 +207,72 @@ class TrainerControllerTest {
     @DisplayName("reading a profile without credentials comes back as 401")
     void rejectsProfileWithoutCredentials() throws Exception {
         mockMvc.perform(get("/trainers/{username}", USERNAME))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private Training training(String name, LocalDate date) {
+        TrainingType type = new TrainingType();
+        ReflectionTestUtils.setField(type, "name", "YOGA");
+
+        return Training.builder()
+                .trainee(trainee("John", "Smith"))
+                .name(name)
+                .type(type)
+                .date(date)
+                .duration(90L)
+                .build();
+    }
+
+    @Test
+    @DisplayName("the trainings come back with the trainee and the type")
+    void listsTrainings() throws Exception {
+        when(gymCrmFacade.getTrainerTrainings(USERNAME, PASSWORD, null, null, null))
+                .thenReturn(List.of(training("Morning Yoga", LocalDate.of(2026, 8, 1))));
+
+        mockMvc.perform(get("/trainers/{username}/trainings", USERNAME)
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].trainingName").value("Morning Yoga"))
+                .andExpect(jsonPath("$[0].trainingDate").value("2026-08-01"))
+                .andExpect(jsonPath("$[0].trainingType").value("YOGA"))
+                .andExpect(jsonPath("$[0].trainingDuration").value(90))
+                .andExpect(jsonPath("$[0].traineeUsername").value("John.Smith"))
+                .andExpect(jsonPath("$[0].traineeName").value("John Smith"));
+    }
+
+    @Test
+    @DisplayName("every training filter reaches the facade, dates included")
+    void passesTrainingFiltersToTheFacade() throws Exception {
+        when(gymCrmFacade.getTrainerTrainings(USERNAME, PASSWORD,
+                LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), "Smith"))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/trainers/{username}/trainings", USERNAME)
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
+                        .param("from", "2026-08-01")
+                        .param("to", "2026-08-31")
+                        .param("traineeName", "Smith"))
+                .andExpect(status().isOk());
+
+        verify(gymCrmFacade).getTrainerTrainings(USERNAME, PASSWORD,
+                LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), "Smith");
+    }
+
+    @Test
+    @DisplayName("reading somebody else's trainings comes back as 403")
+    void rejectsTrainingsForOtherUser() throws Exception {
+        mockMvc.perform(get("/trainers/{username}/trainings", "John.Smith")
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD)))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(gymCrmFacade);
+    }
+
+    @Test
+    @DisplayName("reading trainings without credentials comes back as 401")
+    void rejectsTrainingsWithoutCredentials() throws Exception {
+        mockMvc.perform(get("/trainers/{username}/trainings", USERNAME))
                 .andExpect(status().isUnauthorized());
     }
 }
