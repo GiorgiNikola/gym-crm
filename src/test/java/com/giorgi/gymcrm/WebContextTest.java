@@ -34,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.Base64;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -117,6 +118,21 @@ class WebContextTest {
                                 {"firstName":"Sarah","lastName":"Miller","specialization":"YOGA"}"""))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.username").value("Sarah.Miller"));
+    }
+
+    @Test
+    @DisplayName("a deleted trainee cannot be read back")
+    void deletesRegisteredTrainee() throws Exception {
+        RegistrationResponse registered = registerTrainee("Mary", "Jones");
+        String credentials = basic(registered.username(), registered.password());
+
+        mockMvc.perform(delete("/trainees/{username}", registered.username())
+                        .header(HttpHeaders.AUTHORIZATION, credentials))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/trainees/{username}", registered.username())
+                        .header(HttpHeaders.AUTHORIZATION, credentials))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

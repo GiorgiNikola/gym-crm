@@ -88,16 +88,22 @@ public class TraineeService {
     @Transactional
     public Trainee updateProfile(String username, String password,
                                  String firstName, String lastName,
-                                 LocalDate dateOfBirth, String address) {
+                                 LocalDate dateOfBirth, String address, boolean isActive) {
         authenticationService.authenticate(username, password);
         requireText(firstName, "First name");
         requireText(lastName, "Last name");
 
         Trainee trainee = findProfileOrThrow(username);
-        trainee.getUser().setFirstName(firstName);
-        trainee.getUser().setLastName(lastName);
+        User user = trainee.getUser();
+        user.setFirstName(firstName);
+        user.setLastName(lastName);
         trainee.setDateOfBirth(dateOfBirth);
         trainee.setAddress(address);
+
+        if (user.isActive() != isActive) {
+            user.setActive(isActive);
+            log.info("Trainee {} is {}", username, isActive ? "activated" : "deactivated");
+        }
 
         Trainee updated = traineeDao.update(trainee);
         log.info("Updated trainee profile: {}", username);

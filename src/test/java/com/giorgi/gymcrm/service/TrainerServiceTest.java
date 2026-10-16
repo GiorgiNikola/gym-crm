@@ -170,12 +170,49 @@ class TrainerServiceTest {
         when(trainerDao.update(sarah)).thenReturn(sarah);
 
         Trainer updated = trainerService.updateProfile("Sarah.Miller", PASSWORD,
-                "Sara", "Millerson");
+                "Sara", "Millerson", true);
 
         Assertions.assertEquals("Sara", updated.getUser().getFirstName());
         Assertions.assertEquals("Millerson", updated.getUser().getLastName());
         Assertions.assertSame(original, updated.getSpecialization());
         verifyNoInteractions(trainingTypeDao);
+    }
+
+    @Test
+    @DisplayName("updateProfile deactivates the trainer when the body says so")
+    void updatesActiveFlag() {
+        Trainer sarah = sarah(true);
+        when(trainerDao.findProfileByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
+        when(trainerDao.update(sarah)).thenReturn(sarah);
+
+        Trainer updated = trainerService.updateProfile("Sarah.Miller", PASSWORD, "Sarah", "Miller", false);
+
+        Assertions.assertFalse(updated.getUser().isActive());
+    }
+
+    @Test
+    @DisplayName("updateProfile brings a deactivated trainer back")
+    void reactivatesTrainer() {
+        Trainer sarah = sarah(false);
+        when(trainerDao.findProfileByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
+        when(trainerDao.update(sarah)).thenReturn(sarah);
+
+        Trainer updated = trainerService.updateProfile("Sarah.Miller", PASSWORD, "Sarah", "Miller", true);
+
+        Assertions.assertTrue(updated.getUser().isActive());
+    }
+
+    @Test
+    @DisplayName("updateProfile accepts the state the trainer is already in")
+    void keepsActiveFlagWithoutComplaining() {
+        Trainer sarah = sarah(true);
+        when(trainerDao.findProfileByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
+        when(trainerDao.update(sarah)).thenReturn(sarah);
+
+        Trainer updated = Assertions.assertDoesNotThrow(
+                () -> trainerService.updateProfile("Sarah.Miller", PASSWORD, "Sarah", "Miller", true));
+
+        Assertions.assertTrue(updated.getUser().isActive());
     }
 
     @Test

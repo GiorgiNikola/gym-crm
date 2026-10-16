@@ -74,11 +74,11 @@ class GymCrmFacadeTest {
     @Test
     @DisplayName("updateTraineeProfile goes to the trainee service")
     void updatesTraineeProfile() {
-        when(traineeService.updateProfile("John.Smith", PASSWORD, "John", "Smith", DATE_OF_BIRTH, ADDRESS))
+        when(traineeService.updateProfile("John.Smith", PASSWORD, "John", "Smith", DATE_OF_BIRTH, ADDRESS, false))
                 .thenReturn(trainee);
 
         Assertions.assertSame(trainee, gymCrmFacade.updateTraineeProfile(
-                "John.Smith", PASSWORD, "John", "Smith", DATE_OF_BIRTH, ADDRESS));
+                "John.Smith", PASSWORD, "John", "Smith", DATE_OF_BIRTH, ADDRESS, false));
     }
 
     @Test
@@ -126,11 +126,11 @@ class GymCrmFacadeTest {
     @Test
     @DisplayName("updateTrainerProfile goes to the trainer service")
     void updatesTrainerProfile() {
-        when(trainerService.updateProfile("Sarah.Miller", PASSWORD, "Sarah", "Miller"))
+        when(trainerService.updateProfile("Sarah.Miller", PASSWORD, "Sarah", "Miller", true))
                 .thenReturn(trainer);
 
         Assertions.assertSame(trainer, gymCrmFacade.updateTrainerProfile(
-                "Sarah.Miller", PASSWORD, "Sarah", "Miller"));
+                "Sarah.Miller", PASSWORD, "Sarah", "Miller", true));
     }
 
     @Test

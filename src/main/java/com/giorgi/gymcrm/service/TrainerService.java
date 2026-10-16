@@ -85,14 +85,20 @@ public class TrainerService {
 
     @Transactional
     public Trainer updateProfile(String username, String password,
-                                 String firstName, String lastName) {
+                                 String firstName, String lastName, boolean isActive) {
         authenticationService.authenticate(username, password);
         requireText(firstName, "First name");
         requireText(lastName, "Last name");
 
         Trainer trainer = findProfileOrThrow(username);
-        trainer.getUser().setFirstName(firstName);
-        trainer.getUser().setLastName(lastName);
+        User user = trainer.getUser();
+        user.setFirstName(firstName);
+        user.setLastName(lastName);
+
+        if (user.isActive() != isActive) {
+            user.setActive(isActive);
+            log.info("Trainer {} is {}", username, isActive ? "activated" : "deactivated");
+        }
 
         Trainer updated = trainerDao.update(trainer);
         log.info("Updated trainer profile: {}", username);

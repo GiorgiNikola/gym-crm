@@ -148,12 +148,65 @@ class TraineeServiceTest {
         when(traineeDao.update(john)).thenReturn(john);
 
         Trainee updated = traineeService.updateProfile("John.Smith", PASSWORD,
-                "Johnny", "Smithson", LocalDate.of(2000, 1, 1), "456 Park Avenue Boston");
+                "Johnny", "Smithson", LocalDate.of(2000, 1, 1), "456 Park Avenue Boston", true);
 
         Assertions.assertEquals("Johnny", updated.getUser().getFirstName());
         Assertions.assertEquals("Smithson", updated.getUser().getLastName());
         Assertions.assertEquals(LocalDate.of(2000, 1, 1), updated.getDateOfBirth());
         Assertions.assertEquals("456 Park Avenue Boston", updated.getAddress());
+    }
+
+    @Test
+    @DisplayName("updateProfile deactivates the trainee when the body says so")
+    void updatesActiveFlag() {
+        Trainee john = john(true);
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.update(john)).thenReturn(john);
+
+        Trainee updated = traineeService.updateProfile("John.Smith", PASSWORD,
+                "John", "Smith", DATE_OF_BIRTH, ADDRESS, false);
+
+        Assertions.assertFalse(updated.getUser().isActive());
+    }
+
+    @Test
+    @DisplayName("updateProfile brings a deactivated trainee back")
+    void reactivatesTrainee() {
+        Trainee john = john(false);
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.update(john)).thenReturn(john);
+
+        Trainee updated = traineeService.updateProfile("John.Smith", PASSWORD,
+                "John", "Smith", DATE_OF_BIRTH, ADDRESS, true);
+
+        Assertions.assertTrue(updated.getUser().isActive());
+    }
+
+    @Test
+    @DisplayName("updateProfile accepts the state the trainee is already in")
+    void keepsActiveFlagWithoutComplaining() {
+        Trainee john = john(true);
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.update(john)).thenReturn(john);
+
+        Trainee updated = Assertions.assertDoesNotThrow(() -> traineeService.updateProfile("John.Smith", PASSWORD,
+                "John", "Smith", DATE_OF_BIRTH, ADDRESS, true));
+
+        Assertions.assertTrue(updated.getUser().isActive());
+    }
+
+    @Test
+    @DisplayName("updateProfile clears the date of birth and the address when they are left out")
+    void clearsOptionalFields() {
+        Trainee john = john(true);
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.update(john)).thenReturn(john);
+
+        Trainee updated = traineeService.updateProfile("John.Smith", PASSWORD,
+                "John", "Smith", null, null, true);
+
+        Assertions.assertNull(updated.getDateOfBirth());
+        Assertions.assertNull(updated.getAddress());
     }
 
     @Test

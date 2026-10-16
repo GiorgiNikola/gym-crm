@@ -55,8 +55,8 @@ public class GymCrmFacade {
 
     public Trainee updateTraineeProfile(String username, String password,
                                         String firstName, String lastName,
-                                        LocalDate dateOfBirth, String address) {
-        return traineeService.updateProfile(username, password, firstName, lastName, dateOfBirth, address);
+                                        LocalDate dateOfBirth, String address, boolean isActive) {
+        return traineeService.updateProfile(username, password, firstName, lastName, dateOfBirth, address, isActive);
     }
 
     public void changeStatus(String username, String password, boolean active) {
@@ -84,8 +84,8 @@ public class GymCrmFacade {
     }
 
     public Trainer updateTrainerProfile(String username, String password,
-                                        String firstName, String lastName) {
-        return trainerService.updateProfile(username, password, firstName, lastName);
+                                        String firstName, String lastName, boolean isActive) {
+        return trainerService.updateProfile(username, password, firstName, lastName, isActive);
     }
 
     public Training addTraining(String username, String password,
