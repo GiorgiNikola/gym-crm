@@ -14,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.annotation.Transactional;
@@ -208,5 +209,14 @@ class TraineeDaoImplTest {
 
         Assertions.assertTrue(found.isPresent());
         Assertions.assertTrue(found.get().getTrainers().isEmpty());
+    }
+
+    @Test
+    @DisplayName("a taken username comes out of the dao as a spring data access exception")
+    void translatesDuplicateUsername() {
+        traineeDao.save(trainee("John", "Smith"));
+
+        Assertions.assertThrows(DataIntegrityViolationException.class,
+                () -> traineeDao.save(trainee("John", "Smith")));
     }
 }
