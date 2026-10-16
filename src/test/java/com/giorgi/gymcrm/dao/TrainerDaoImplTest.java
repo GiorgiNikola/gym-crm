@@ -117,6 +117,21 @@ class TrainerDaoImplTest {
     }
 
     @Test
+    @DisplayName("findNotAssignedToTrainee sorts the trainers by username")
+    void findNotAssignedSortsByUsername() {
+        trainerDao.save(trainer("Zoe", "Adams", "YOGA", true));
+        trainerDao.save(trainer("Mia", "Clark", "ZUMBA", true));
+        trainerDao.save(trainer("Adam", "Brown", "FITNESS", true));
+        entityManager.persist(trainee("John", "Smith"));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Trainer> unassigned = trainerDao.findNotAssignedToTrainee("John.Smith");
+
+        Assertions.assertEquals(List.of("Adam.Brown", "Mia.Clark", "Zoe.Adams"), usernames(unassigned));
+    }
+
+    @Test
     @DisplayName("findNotAssignedToTrainee leaves out trainers the trainee already has")
     void findNotAssignedExcludesAssignedTrainers() {
         Trainer sarah = trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));

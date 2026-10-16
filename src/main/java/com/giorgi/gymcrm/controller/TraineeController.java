@@ -3,8 +3,11 @@ package com.giorgi.gymcrm.controller;
 import com.giorgi.gymcrm.dto.RegistrationResponse;
 import com.giorgi.gymcrm.dto.TraineeProfileResponse;
 import com.giorgi.gymcrm.dto.TraineeRegistrationRequest;
+import com.giorgi.gymcrm.dto.TrainerSummary;
 import com.giorgi.gymcrm.dto.UpdateTraineeRequest;
+import com.giorgi.gymcrm.dto.UpdateTraineeTrainersRequest;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
+import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.User;
 import com.giorgi.gymcrm.web.Credentials;
 import com.giorgi.gymcrm.web.RequestGuards;
@@ -27,6 +30,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
 
 @Tag(name = "Trainees", description = "Trainee profiles")
 @RestController
@@ -110,5 +116,49 @@ public class TraineeController {
                               @Parameter(hidden = true) Credentials credentials) {
         RequestGuards.requireSelf(username, credentials);
         gymCrmFacade.deleteTraineeProfile(username, credentials.password());
+    }
+
+    @GetMapping("/{username}/unassigned-trainers")
+    @SecurityRequirement(name = "basicAuth")
+    @Operation(summary = "Lists the trainers this trainee could still pick",
+            description = "Only active trainers that are not assigned to the trainee yet.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "The trainers, ordered by username"),
+            @ApiResponse(responseCode = "401", description = "The credentials are missing, malformed or wrong"),
+            @ApiResponse(responseCode = "403", description = "The credentials belong to another user"),
+            @ApiResponse(responseCode = "404", description = "There is no trainee with that username")
+    })
+    public List<TrainerSummary> getUnassignedTrainers(@PathVariable String username,
+                                                      @Parameter(hidden = true) Credentials credentials) {
+        RequestGuards.requireSelf(username, credentials);
+        return gymCrmFacade.getUnassignedTrainers(username, credentials.password()).stream()
+                .map(TrainerSummary::from)
+                .toList();
+    }
+
+    @PutMapping("/{username}/trainers")
+    @SecurityRequirement(name = "basicAuth")
+    @Operation(summary = "Replaces the trainers assigned to a trainee",
+            description = "The list replaces the current assignments: an empty list removes every trainer, "
+                    + "and sending the same list again leaves the same state.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "The resulting trainers, sorted by username"),
+            @ApiResponse(responseCode = "400", description = "The list is missing or an entry is blank"),
+            @ApiResponse(responseCode = "401", description = "The credentials are missing, malformed or wrong"),
+            @ApiResponse(responseCode = "403", description = "The credentials belong to another user"),
+            @ApiResponse(responseCode = "404", description = "The trainee or one of the trainers does not exist")
+    })
+    public List<TrainerSummary> updateTrainers(@PathVariable String username,
+                                               @Parameter(hidden = true) Credentials credentials,
+                                               @Valid @RequestBody UpdateTraineeTrainersRequest request) {
+        RequestGuards.requireSelf(username, credentials);
+
+        Trainee updated = gymCrmFacade.updateTraineeTrainers(username, credentials.password(),
+                new LinkedHashSet<>(request.trainerUsernames()));
+
+        return updated.getTrainers().stream()
+                .map(TrainerSummary::from)
+                .sorted(Comparator.comparing(TrainerSummary::username))
+                .toList();
     }
 }

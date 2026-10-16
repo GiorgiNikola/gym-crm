@@ -1,5 +1,6 @@
 package com.giorgi.gymcrm.controller;
 
+import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
@@ -23,8 +24,11 @@ import java.time.LocalDate;
 import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anySet;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -240,6 +244,141 @@ class TraineeControllerTest {
     @DisplayName("reading a profile without credentials comes back as 401")
     void rejectsProfileWithoutCredentials() throws Exception {
         mockMvc.perform(get("/trainees/{username}", USERNAME))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("the unassigned trainers come back with their specialization")
+    void listsUnassignedTrainers() throws Exception {
+        when(gymCrmFacade.getUnassignedTrainers(USERNAME, PASSWORD))
+                .thenReturn(List.of(trainer("Adam", "Brown", "FITNESS"), trainer("Zoe", "Adams", "ZUMBA")));
+
+        mockMvc.perform(get("/trainees/{username}/unassigned-trainers", USERNAME)
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].username").value("Adam.Brown"))
+                .andExpect(jsonPath("$[0].firstName").value("Adam"))
+                .andExpect(jsonPath("$[0].specialization").value("FITNESS"))
+                .andExpect(jsonPath("$[1].username").value("Zoe.Adams"));
+    }
+
+    @Test
+    @DisplayName("assigning trainers comes back as the sorted list")
+    void assignsTrainers() throws Exception {
+        when(gymCrmFacade.updateTraineeTrainers(eq(USERNAME), eq(PASSWORD), anySet()))
+                .thenReturn(johnWithTrainers());
+
+        mockMvc.perform(put("/trainees/{username}/trainers", USERNAME)
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trainerUsernames\":[\"Zoe.Adams\",\"Adam.Brown\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].username").value("Adam.Brown"))
+                .andExpect(jsonPath("$[1].username").value("Zoe.Adams"));
+
+        verify(gymCrmFacade).updateTraineeTrainers(USERNAME, PASSWORD,
+                new LinkedHashSet<>(List.of("Zoe.Adams", "Adam.Brown")));
+    }
+
+    @Test
+    @DisplayName("an empty list reaches the facade as an empty set")
+    void clearsTrainers() throws Exception {
+        when(gymCrmFacade.updateTraineeTrainers(eq(USERNAME), eq(PASSWORD), anySet()))
+                .thenReturn(trainee());
+
+        mockMvc.perform(put("/trainees/{username}/trainers", USERNAME)
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trainerUsernames\":[]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+
+        verify(gymCrmFacade).updateTraineeTrainers(USERNAME, PASSWORD, Set.of());
+    }
+
+    @Test
+    @DisplayName("a repeated username reaches the facade once")
+    void deduplicatesTrainerUsernames() throws Exception {
+        when(gymCrmFacade.updateTraineeTrainers(eq(USERNAME), eq(PASSWORD), anySet()))
+                .thenReturn(johnWithTrainers());
+
+        mockMvc.perform(put("/trainees/{username}/trainers", USERNAME)
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trainerUsernames\":[\"Adam.Brown\",\"Adam.Brown\"]}"))
+                .andExpect(status().isOk());
+
+        verify(gymCrmFacade).updateTraineeTrainers(USERNAME, PASSWORD, Set.of("Adam.Brown"));
+    }
+
+    @Test
+    @DisplayName("a body without the trainer list comes back as 400")
+    void rejectsMissingTrainerList() throws Exception {
+        mockMvc.perform(put("/trainees/{username}/trainers", USERNAME)
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.trainerUsernames").exists());
+    }
+
+    @Test
+    @DisplayName("a blank entry in the trainer list comes back as 400")
+    void rejectsBlankTrainerUsername() throws Exception {
+        mockMvc.perform(put("/trainees/{username}/trainers", USERNAME)
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trainerUsernames\":[\"Adam.Brown\",\"  \"]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors").exists());
+
+        verifyNoInteractions(gymCrmFacade);
+    }
+
+    @Test
+    @DisplayName("an unknown trainer comes back as 404 naming the missing one")
+    void rejectsUnknownTrainer() throws Exception {
+        when(gymCrmFacade.updateTraineeTrainers(eq(USERNAME), eq(PASSWORD), anySet()))
+                .thenThrow(new ProfileNotFoundException("Trainers not found: Nobody.Here"));
+
+        mockMvc.perform(put("/trainees/{username}/trainers", USERNAME)
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trainerUsernames\":[\"Nobody.Here\"]}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Trainers not found: Nobody.Here"));
+    }
+
+    @Test
+    @DisplayName("listing somebody else's unassigned trainers comes back as 403")
+    void rejectsUnassignedListForOtherUser() throws Exception {
+        mockMvc.perform(get("/trainees/{username}/unassigned-trainers", "Sarah.Miller")
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD)))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(gymCrmFacade);
+    }
+
+    @Test
+    @DisplayName("assigning trainers to somebody else comes back as 403")
+    void rejectsTrainerAssignmentForOtherUser() throws Exception {
+        mockMvc.perform(put("/trainees/{username}/trainers", "Sarah.Miller")
+                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trainerUsernames\":[\"Adam.Brown\"]}"))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(gymCrmFacade);
+    }
+
+    @Test
+    @DisplayName("assigning trainers without credentials comes back as 401")
+    void rejectsTrainerAssignmentWithoutCredentials() throws Exception {
+        mockMvc.perform(put("/trainees/{username}/trainers", USERNAME)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trainerUsernames\":[\"Adam.Brown\"]}"))
                 .andExpect(status().isUnauthorized());
     }
 }

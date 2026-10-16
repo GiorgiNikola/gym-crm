@@ -7,6 +7,7 @@ import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.User;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ import java.util.Set;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -59,6 +61,8 @@ class ProfileFetchIntegrationTest {
     private User trainee;
     private User firstTrainer;
     private User secondTrainer;
+    private User thirdTrainer;
+    private User inactiveTrainer;
 
     @BeforeEach
     void seedProfiles() {
@@ -67,13 +71,23 @@ class ProfileFetchIntegrationTest {
                 "John", "Smith", LocalDate.of(1998, 5, 14), "123 Main St New York");
         trainee = seeded.getUser();
 
-        Trainer adam = gymCrmFacade.createTrainerProfile("Adam", "Brown", "FITNESS");
-        Trainer zoe = gymCrmFacade.createTrainerProfile("Zoe", "Adams", "YOGA");
-        firstTrainer = adam.getUser();
-        secondTrainer = zoe.getUser();
+        firstTrainer = gymCrmFacade.createTrainerProfile("Adam", "Brown", "FITNESS").getUser();
+        secondTrainer = gymCrmFacade.createTrainerProfile("Zoe", "Adams", "YOGA").getUser();
+        thirdTrainer = gymCrmFacade.createTrainerProfile("Mia", "Clark", "ZUMBA").getUser();
+        inactiveTrainer = gymCrmFacade.createTrainerProfile("Ian", "Dark", "STRETCHING").getUser();
 
+        gymCrmFacade.changeStatus(inactiveTrainer.getUsername(), inactiveTrainer.getPassword(), false);
+    }
+
+    private void assignFirstTwoTrainers() {
         gymCrmFacade.updateTraineeTrainers(trainee.getUsername(), trainee.getPassword(),
                 Set.of(firstTrainer.getUsername(), secondTrainer.getUsername()));
+    }
+
+    private String trainerList(String... usernames) {
+        return "{\"trainerUsernames\":[\""
+                + String.join("\",\"", usernames)
+                + "\"]}";
     }
 
     // These rows are committed, so they have to go before the next test or the next test class.
@@ -92,6 +106,8 @@ class ProfileFetchIntegrationTest {
     @Test
     @DisplayName("a trainee profile arrives with both trainers fully filled in")
     void servesTraineeWithTrainers() throws Exception {
+        assignFirstTwoTrainers();
+
         mockMvc.perform(get("/trainees/{username}", trainee.getUsername())
                         .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
                 .andExpect(status().isOk())
@@ -108,6 +124,8 @@ class ProfileFetchIntegrationTest {
     @Test
     @DisplayName("a trainer profile arrives with the trainee listed")
     void servesTrainerWithTrainees() throws Exception {
+        assignFirstTwoTrainers();
+
         mockMvc.perform(get("/trainers/{username}", firstTrainer.getUsername())
                         .header(HttpHeaders.AUTHORIZATION, basic(firstTrainer)))
                 .andExpect(status().isOk())
@@ -120,6 +138,8 @@ class ProfileFetchIntegrationTest {
     @Test
     @DisplayName("an updated trainee still comes back with its trainers")
     void keepsTrainersAfterUpdate() throws Exception {
+        assignFirstTwoTrainers();
+
         mockMvc.perform(put("/trainees/{username}", trainee.getUsername())
                         .header(HttpHeaders.AUTHORIZATION, basic(trainee))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -135,6 +155,8 @@ class ProfileFetchIntegrationTest {
     @Test
     @DisplayName("an updated trainer still comes back with its trainees")
     void keepsTraineesAfterUpdate() throws Exception {
+        assignFirstTwoTrainers();
+
         mockMvc.perform(put("/trainers/{username}", firstTrainer.getUsername())
                         .header(HttpHeaders.AUTHORIZATION, basic(firstTrainer))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -144,5 +166,103 @@ class ProfileFetchIntegrationTest {
                 .andExpect(jsonPath("$.specialization").value("FITNESS"))
                 .andExpect(jsonPath("$.trainees.length()").value(1))
                 .andExpect(jsonPath("$.trainees[0].username").value(trainee.getUsername()));
+    }
+
+    @Test
+    @DisplayName("the unassigned list holds every active trainer and skips the inactive one")
+    void listsActiveUnassignedTrainers() throws Exception {
+        String body = mockMvc.perform(get("/trainees/{username}/unassigned-trainers", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].username").value(firstTrainer.getUsername()))
+                .andExpect(jsonPath("$[0].specialization").value("FITNESS"))
+                .andExpect(jsonPath("$[1].username").value(thirdTrainer.getUsername()))
+                .andExpect(jsonPath("$[2].username").value(secondTrainer.getUsername()))
+                .andReturn().getResponse().getContentAsString();
+
+        Assertions.assertFalse(body.contains(inactiveTrainer.getUsername()), body);
+    }
+
+    @Test
+    @DisplayName("assigning two trainers comes back as those two, sorted")
+    void assignsTwoTrainers() throws Exception {
+        mockMvc.perform(put("/trainees/{username}/trainers", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(trainerList(secondTrainer.getUsername(), firstTrainer.getUsername())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].username").value(firstTrainer.getUsername()))
+                .andExpect(jsonPath("$[0].specialization").value("FITNESS"))
+                .andExpect(jsonPath("$[1].username").value(secondTrainer.getUsername()));
+    }
+
+    @Test
+    @DisplayName("an assigned trainer drops out of the unassigned list")
+    void dropsAssignedTrainersFromTheUnassignedList() throws Exception {
+        assignFirstTwoTrainers();
+
+        mockMvc.perform(get("/trainees/{username}/unassigned-trainers", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].username").value(thirdTrainer.getUsername()));
+    }
+
+    @Test
+    @DisplayName("the profile shows the trainers assigned over http")
+    void showsAssignedTrainersOnTheProfile() throws Exception {
+        mockMvc.perform(put("/trainees/{username}/trainers", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(trainerList(firstTrainer.getUsername(), secondTrainer.getUsername())))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/trainees/{username}", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.trainers.length()").value(2))
+                .andExpect(jsonPath("$.trainers[0].username").value(firstTrainer.getUsername()))
+                .andExpect(jsonPath("$.trainers[1].username").value(secondTrainer.getUsername()));
+    }
+
+    @Test
+    @DisplayName("sending the same assignment twice gives the same answer")
+    void repeatsTheSameAssignment() throws Exception {
+        String body = trainerList(firstTrainer.getUsername(), secondTrainer.getUsername());
+
+        String first = mockMvc.perform(put("/trainees/{username}/trainers", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        String second = mockMvc.perform(put("/trainees/{username}/trainers", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        Assertions.assertEquals(first, second);
+    }
+
+    @Test
+    @DisplayName("an empty list takes every trainer off the trainee")
+    void clearsTrainersWithAnEmptyList() throws Exception {
+        assignFirstTwoTrainers();
+
+        mockMvc.perform(put("/trainees/{username}/trainers", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trainerUsernames\":[]}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("[]"));
+
+        mockMvc.perform(get("/trainees/{username}", trainee.getUsername())
+                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+                .andExpect(jsonPath("$.trainers.length()").value(0));
     }
 }

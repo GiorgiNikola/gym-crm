@@ -87,6 +87,7 @@ public class TrainerDaoImpl implements TrainerDao {
                           join t.trainers assigned
                           where t.user.username = :username
                       )
+                    order by u.username
                     """, Trainer.class)
                 .setParameter("username", traineeUsername)
                 .getResultList();
