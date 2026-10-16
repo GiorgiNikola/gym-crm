@@ -28,6 +28,11 @@ public class UserService {
         this.authenticationService = authenticationService;
     }
 
+    @Transactional(readOnly = true)
+    public void login(String username, String password) {
+        authenticationService.authenticate(username, password);
+    }
+
     @Transactional
     public void changeStatus(String username, String password, boolean active) {
         authenticationService.authenticate(username, password);

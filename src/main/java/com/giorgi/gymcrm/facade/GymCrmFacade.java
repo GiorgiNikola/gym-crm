@@ -36,6 +36,10 @@ public class GymCrmFacade {
         this.userService = userService;
     }
 
+    public void login(String username, String password) {
+        userService.login(username, password);
+    }
+
     public Trainee createTraineeProfile(String firstName, String lastName,
                                         LocalDate dateOfBirth, String address) {
         return traineeService.createProfile(firstName, lastName, dateOfBirth, address);
@@ -104,7 +108,7 @@ public class GymCrmFacade {
         return trainingService.getTrainerTrainings(username, password, fromDate, toDate, traineeName);
     }
 
-    public List<TrainingType> getTrainingTypes() {
-        return trainingTypeService.findAll();
+    public List<TrainingType> getTrainingTypes(String username, String password) {
+        return trainingTypeService.findAll(username, password);
     }
 }

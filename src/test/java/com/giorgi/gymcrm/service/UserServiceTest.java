@@ -157,4 +157,22 @@ class UserServiceTest {
 
         verifyNoInteractions(userDao);
     }
+
+    @Test
+    @DisplayName("login just hands the credentials to the authentication service")
+    void logsIn() {
+        userService.login(USERNAME, PASSWORD);
+
+        verify(authenticationService).authenticate(USERNAME, PASSWORD);
+        verifyNoInteractions(userDao);
+    }
+
+    @Test
+    @DisplayName("login passes a failed authentication on to the caller")
+    void loginFailsForWrongPassword() {
+        doThrow(new AuthenticationException("Invalid username or password"))
+                .when(authenticationService).authenticate(USERNAME, "wrongPassword");
+
+        Assertions.assertThrows(AuthenticationException.class, () -> userService.login(USERNAME, "wrongPassword"));
+    }
 }

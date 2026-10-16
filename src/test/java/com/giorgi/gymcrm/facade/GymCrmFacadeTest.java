@@ -185,8 +185,16 @@ class GymCrmFacadeTest {
     @DisplayName("getTrainingTypes goes to the training type service")
     void getsTrainingTypes() {
         List<TrainingType> types = List.of(new TrainingType());
-        when(trainingTypeService.findAll()).thenReturn(types);
+        when(trainingTypeService.findAll("John.Smith", PASSWORD)).thenReturn(types);
 
-        Assertions.assertSame(types, gymCrmFacade.getTrainingTypes());
+        Assertions.assertSame(types, gymCrmFacade.getTrainingTypes("John.Smith", PASSWORD));
+    }
+
+    @Test
+    @DisplayName("login goes to the user service")
+    void logsIn() {
+        gymCrmFacade.login("John.Smith", PASSWORD);
+
+        verify(userService).login("John.Smith", PASSWORD);
     }
 }

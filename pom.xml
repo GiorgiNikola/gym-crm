@@ -18,6 +18,9 @@
         <hikari.version>7.0.2</hikari.version>
         <postgresql.version>42.7.13</postgresql.version>
         <h2.version>2.4.240</h2.version>
+        <validator.version>9.0.2.Final</validator.version>
+        <expressly.version>6.0.0</expressly.version>
+        <swagger.version>2.2.55</swagger.version>
         <slf4j.version>2.0.18</slf4j.version>
         <logback.version>1.5.38</logback.version>
         <lombok.version>1.18.46</lombok.version>
@@ -67,6 +70,25 @@
             <groupId>org.hibernate.orm</groupId>
             <artifactId>hibernate-core</artifactId>
             <version>${hibernate.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.hibernate.validator</groupId>
+            <artifactId>hibernate-validator</artifactId>
+            <version>${validator.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.glassfish.expressly</groupId>
+            <artifactId>expressly</artifactId>
+            <version>${expressly.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations-jakarta</artifactId>
+            <version>${swagger.version}</version>
         </dependency>
 
         <dependency>
@@ -159,6 +181,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${compiler.plugin.version}</version>
                 <configuration>
+                    <parameters>true</parameters>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
