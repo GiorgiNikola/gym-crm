@@ -1,6 +1,6 @@
 package com.giorgi.gymcrm.dao;
 
-import com.giorgi.gymcrm.GymCrmApplication;
+import com.giorgi.gymcrm.config.RootConfig;
 import com.giorgi.gymcrm.model.User;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Optional;
 
 @ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = GymCrmApplication.class)
+@ContextConfiguration(classes = RootConfig.class)
 @Transactional
 class UserDaoImplTest {
 

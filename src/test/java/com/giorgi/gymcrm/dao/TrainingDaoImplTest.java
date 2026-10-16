@@ -1,6 +1,6 @@
 package com.giorgi.gymcrm.dao;
 
-import com.giorgi.gymcrm.GymCrmApplication;
+import com.giorgi.gymcrm.config.RootConfig;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
@@ -23,7 +23,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = GymCrmApplication.class)
+@ContextConfiguration(classes = RootConfig.class)
 @Transactional
 class TrainingDaoImplTest {
 
@@ -151,6 +151,38 @@ class TrainingDaoImplTest {
     }
 
     @Test
+    @DisplayName("findTraineeTrainings matches the trainer last name")
+    void filtersTraineeTrainingsByTrainerLastName() {
+        List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", null, null, "Miller", null);
+
+        Assertions.assertEquals(List.of("Morning Yoga"), names(trainings));
+    }
+
+    @Test
+    @DisplayName("findTraineeTrainings matches the trainer full name")
+    void filtersTraineeTrainingsByTrainerFullName() {
+        List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", null, null, "sarah miller", null);
+
+        Assertions.assertEquals(List.of("Morning Yoga"), names(trainings));
+    }
+
+    @Test
+    @DisplayName("a blank trainer name is the same as no trainer filter")
+    void ignoresBlankTrainerName() {
+        List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", null, null, "   ", null);
+
+        Assertions.assertEquals(List.of("Morning Yoga", "Strength Session"), names(trainings));
+    }
+
+    @Test
+    @DisplayName("a blank training type is the same as no type filter")
+    void ignoresBlankTrainingType() {
+        List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", null, null, null, "   ");
+
+        Assertions.assertEquals(List.of("Morning Yoga", "Strength Session"), names(trainings));
+    }
+
+    @Test
     @DisplayName("findTraineeTrainings matches the training type")
     void filtersTraineeTrainingsByType() {
         List<Training> trainings = trainingDao.findTraineeTrainings("John.Smith", null, null, null, "FITNESS");
@@ -191,6 +223,23 @@ class TrainingDaoImplTest {
         List<Training> trainings = trainingDao.findTrainerTrainings("Sarah.Miller", null, null, "emily");
 
         Assertions.assertEquals(List.of("Evening Yoga"), names(trainings));
+    }
+
+    @Test
+    @DisplayName("findTrainerTrainings matches the trainee last name and full name")
+    void filtersTrainerTrainingsByTraineeLastAndFullName() {
+        Assertions.assertEquals(List.of("Evening Yoga"),
+                names(trainingDao.findTrainerTrainings("Sarah.Miller", null, null, "JOHNSON")));
+        Assertions.assertEquals(List.of("Evening Yoga"),
+                names(trainingDao.findTrainerTrainings("Sarah.Miller", null, null, "Emily Johnson")));
+    }
+
+    @Test
+    @DisplayName("a blank trainee name is the same as no trainee filter")
+    void ignoresBlankTraineeName() {
+        List<Training> trainings = trainingDao.findTrainerTrainings("Sarah.Miller", null, null, "   ");
+
+        Assertions.assertEquals(List.of("Morning Yoga", "Evening Yoga"), names(trainings));
     }
 
     @Test

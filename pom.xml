@@ -12,15 +12,22 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring.version>7.0.9</spring.version>
+        <tomcat.version>11.0.26</tomcat.version>
+        <jackson.version>3.2.3</jackson.version>
         <hibernate.version>7.4.5.Final</hibernate.version>
         <hikari.version>7.0.2</hikari.version>
         <postgresql.version>42.7.13</postgresql.version>
         <h2.version>2.4.240</h2.version>
+        <validator.version>9.0.2.Final</validator.version>
+        <expressly.version>6.0.0</expressly.version>
+        <swagger.version>2.2.55</swagger.version>
         <slf4j.version>2.0.18</slf4j.version>
         <logback.version>1.5.38</logback.version>
         <lombok.version>1.18.46</lombok.version>
         <junit.version>6.0.3</junit.version>
         <mockito.version>5.23.0</mockito.version>
+        <hamcrest.version>3.0</hamcrest.version>
+        <jsonpath.version>2.10.0</jsonpath.version>
         <jacoco.version>0.8.13</jacoco.version>
         <surefire.version>3.5.6</surefire.version>
         <compiler.plugin.version>3.15.0</compiler.plugin.version>
@@ -42,9 +49,46 @@
         </dependency>
 
         <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.tomcat.embed</groupId>
+            <artifactId>tomcat-embed-core</artifactId>
+            <version>${tomcat.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.hibernate.orm</groupId>
             <artifactId>hibernate-core</artifactId>
             <version>${hibernate.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.hibernate.validator</groupId>
+            <artifactId>hibernate-validator</artifactId>
+            <version>${validator.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.glassfish.expressly</groupId>
+            <artifactId>expressly</artifactId>
+            <version>${expressly.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations-jakarta</artifactId>
+            <version>${swagger.version}</version>
         </dependency>
 
         <dependency>
@@ -114,6 +158,20 @@
             <version>${h2.version}</version>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>org.hamcrest</groupId>
+            <artifactId>hamcrest</artifactId>
+            <version>${hamcrest.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.jayway.jsonpath</groupId>
+            <artifactId>json-path</artifactId>
+            <version>${jsonpath.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -123,6 +181,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${compiler.plugin.version}</version>
                 <configuration>
+                    <parameters>true</parameters>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
@@ -164,7 +223,6 @@
                         </goals>
                         <configuration>
                             <excludes>
-                                <exclude>**/demo/**</exclude>
                                 <exclude>**/GymCrmApplication.class</exclude>
                             </excludes>
                         </configuration>

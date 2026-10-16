@@ -1,6 +1,6 @@
 package com.giorgi.gymcrm.dao;
 
-import com.giorgi.gymcrm.GymCrmApplication;
+import com.giorgi.gymcrm.config.RootConfig;
 import com.giorgi.gymcrm.model.TrainingType;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
@@ -11,10 +11,11 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 @ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = GymCrmApplication.class)
+@ContextConfiguration(classes = RootConfig.class)
 @Transactional
 class TrainingTypeDaoImplTest {
 
@@ -36,5 +37,14 @@ class TrainingTypeDaoImplTest {
         Optional<TrainingType> found = trainingTypeDao.findByName("PILATES");
 
         Assertions.assertTrue(found.isEmpty());
+    }
+
+    @Test
+    @DisplayName("findAll returns the five seeded types, FITNESS first")
+    void findsAllTypes() {
+        List<TrainingType> types = trainingTypeDao.findAll();
+
+        Assertions.assertEquals(5, types.size());
+        Assertions.assertEquals("FITNESS", types.get(0).getName());
     }
 }
