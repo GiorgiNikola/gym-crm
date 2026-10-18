@@ -1,7 +1,5 @@
 package com.giorgi.gymcrm;
 
-import com.giorgi.gymcrm.config.RootConfig;
-import com.giorgi.gymcrm.config.WebConfig;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
@@ -11,19 +9,14 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.ContextHierarchy;
-import org.springframework.test.context.junit.jupiter.SpringExtension;
-import org.springframework.test.context.web.WebAppConfiguration;
 import org.springframework.test.jdbc.JdbcTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.context.WebApplicationContext;
 
 import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
@@ -41,17 +34,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 // No @Transactional on purpose. The request has to run on its own transaction so that the
 // response is built after the Hibernate session closes, which is what makes a missing
-// join fetch in the profile queries show up as a failure here.
-@ExtendWith(SpringExtension.class)
-@WebAppConfiguration
-@ContextHierarchy({
-        @ContextConfiguration(classes = RootConfig.class),
-        @ContextConfiguration(classes = WebConfig.class)
-})
+// join fetch in the profile queries show up as a failure here. That also relies on
+// spring.jpa.open-in-view being false: with it on, the session would stay open for rendering.
+@SpringBootTest
+@AutoConfigureMockMvc
 class ProfileFetchIntegrationTest {
-
-    @Autowired
-    private WebApplicationContext webApplicationContext;
 
     @Autowired
     private GymCrmFacade gymCrmFacade;
@@ -59,7 +46,9 @@ class ProfileFetchIntegrationTest {
     @Autowired
     private DataSource dataSource;
 
+    @Autowired
     private MockMvc mockMvc;
+
     private User trainee;
     private User firstTrainer;
     private User secondTrainer;
@@ -68,7 +57,6 @@ class ProfileFetchIntegrationTest {
 
     @BeforeEach
     void seedProfiles() {
-        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
         Trainee seeded = gymCrmFacade.createTraineeProfile(
                 "John", "Smith", LocalDate.of(1998, 5, 14), "123 Main St New York");
         trainee = seeded.getUser();

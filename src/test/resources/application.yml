@@ -1,0 +1,24 @@
+# Replaces src/main/resources/application.yml on the test classpath, so every setting the
+# tests rely on is repeated here. Only the datasource and ddl-auto differ.
+spring:
+  datasource:
+    url: jdbc:h2:mem:gymcrm;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+      naming:
+        implicit-strategy: org.hibernate.boot.model.naming.ImplicitNamingStrategyJpaCompliantImpl
+        physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+    defer-datasource-initialization: true
+    open-in-view: false
+  sql:
+    init:
+      mode: always
+  servlet:
+    encoding:
+      enabled: false
+  web:
+    resources:
+      add-mappings: false

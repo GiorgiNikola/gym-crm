@@ -1,0 +1,30 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/gymcrm
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: create
+      naming:
+        # the names the hand written config produced: Hibernate's own implicit strategy
+        # plus camelCase to snake_case for the physical names
+        implicit-strategy: org.hibernate.boot.model.naming.ImplicitNamingStrategyJpaCompliantImpl
+        physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+    # data.sql inserts into tables Hibernate creates, so it has to wait for them
+    defer-datasource-initialization: true
+    # the session closes with the service transaction, as before; a lazy association
+    # the queries forgot to fetch fails instead of being loaded during rendering
+    open-in-view: false
+  sql:
+    init:
+      mode: always
+  servlet:
+    encoding:
+      # Boot's CharacterEncodingFilter would force UTF-8 onto requests that name no charset;
+      # the app never had it, so requests keep the container's default as before
+      enabled: false
+  web:
+    resources:
+      # no static content; an unknown path stays a "No endpoint" 404 problem
+      add-mappings: false
