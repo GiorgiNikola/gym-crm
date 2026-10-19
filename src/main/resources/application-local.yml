@@ -1,0 +1,18 @@
+# A PostgreSQL on this machine. The only profile with a hard coded URL.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/gymcrm
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+  jpa:
+    hibernate:
+      # Flyway owns the schema; Hibernate only checks that it matches the entities
+      ddl-auto: validate
+    show-sql: true
+
+logging:
+  level:
+    com.giorgi.gymcrm: DEBUG
+    org.hibernate.SQL: DEBUG

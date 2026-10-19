@@ -1,0 +1,19 @@
+# No default URL on purpose: starting production without DB_URL has to fail, not quietly
+# connect to something on localhost.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 20
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+logging:
+  level:
+    root: WARN
+    com.giorgi.gymcrm: INFO
+    org.hibernate.SQL: OFF
