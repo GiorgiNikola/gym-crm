@@ -1,5 +1,6 @@
 # Replaces src/main/resources/application.yml on the test classpath, so every setting the
-# tests rely on is repeated here. Only the datasource and ddl-auto differ.
+# tests rely on is repeated here. No spring.profiles.default: the profile YAMLs point at
+# PostgreSQL and must stay out of the test run.
 spring:
   datasource:
     url: jdbc:h2:mem:gymcrm;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
@@ -7,15 +8,13 @@ spring:
     password: ""
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      # Flyway builds the schema here too, so every test run also checks the migrations
+      # against the entities
+      ddl-auto: validate
       naming:
         implicit-strategy: org.hibernate.boot.model.naming.ImplicitNamingStrategyJpaCompliantImpl
         physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
-    defer-datasource-initialization: true
     open-in-view: false
-  sql:
-    init:
-      mode: always
   servlet:
     encoding:
       enabled: false
