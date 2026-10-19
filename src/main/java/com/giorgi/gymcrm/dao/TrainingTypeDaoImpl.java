@@ -29,4 +29,10 @@ public class TrainingTypeDaoImpl implements TrainingTypeDao {
                         "select tt from TrainingType tt order by tt.id", TrainingType.class)
                 .getResultList();
     }
+
+    @Override
+    public long count() {
+        return entityManager.createQuery("select count(tt) from TrainingType tt", Long.class)
+                .getSingleResult();
+    }
 }

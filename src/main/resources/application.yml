@@ -21,3 +21,16 @@ spring:
     resources:
       # no static content; an unknown path stays a "No endpoint" 404 problem
       add-mappings: false
+
+# Actuator is not behind Basic auth: these are not controllers taking Credentials.
+management:
+  endpoint:
+    health:
+      show-components: always
+  metrics:
+    tags:
+      application: gym-crm
+
+gymcrm:
+  health:
+    db-latency-threshold-ms: 500

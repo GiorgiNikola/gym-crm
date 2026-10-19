@@ -21,3 +21,17 @@ spring:
   web:
     resources:
       add-mappings: false
+
+# the integration test reads /actuator/health and /actuator/prometheus
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-components: always
+      show-details: always
+  metrics:
+    tags:
+      application: gym-crm

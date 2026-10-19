@@ -17,3 +17,13 @@ logging:
     root: WARN
     com.giorgi.gymcrm: INFO
     org.hibernate.SQL: OFF
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      # components yes, their details no: a reader outside the team learns nothing useful
+      show-details: never

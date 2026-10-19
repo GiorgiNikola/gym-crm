@@ -16,6 +16,13 @@ import java.nio.charset.StandardCharsets;
 public class RequestLoggingFilter extends OncePerRequestFilter {
 
     private static final int CACHE_LIMIT = 10 * 1024;
+    private static final String ACTUATOR_PREFIX = "/actuator/";
+
+    // Prometheus scrapes every few seconds; logging that would bury the real traffic.
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return request.getRequestURI().startsWith(ACTUATOR_PREFIX);
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)

@@ -3,6 +3,7 @@ package com.giorgi.gymcrm.service;
 import com.giorgi.gymcrm.dao.TrainerDao;
 import com.giorgi.gymcrm.exception.AuthenticationException;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
+import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
@@ -44,6 +45,9 @@ class TrainerServiceTest {
 
     @Mock
     private CredentialGenerator credentialGenerator;
+
+    @Mock
+    private GymMetrics gymMetrics;
 
     @InjectMocks
     private TrainerService trainerService;
@@ -224,5 +228,29 @@ class TrainerServiceTest {
                 () -> trainerService.selectByUsername("Sarah.Miller", "wrongPassword"));
 
         verifyNoInteractions(trainerDao);
+    }
+
+    @Test
+    @DisplayName("a saved trainer is counted as a registration")
+    void countsTrainerRegistration() {
+        when(trainingTypeService.requireByName("YOGA")).thenReturn(new TrainingType());
+        when(usernameResolver.generateUsername("Sarah", "Miller")).thenReturn("Sarah.Miller");
+        when(credentialGenerator.generatePassword()).thenReturn(PASSWORD);
+
+        trainerService.createProfile("Sarah", "Miller", "YOGA");
+
+        verify(gymMetrics).trainerRegistered();
+    }
+
+    @Test
+    @DisplayName("an unknown specialization is not counted as a registration")
+    void doesNotCountRejectedRegistration() {
+        when(trainingTypeService.requireByName("PILATES"))
+                .thenThrow(new IllegalArgumentException("Unknown training type: PILATES. Valid values: YOGA"));
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> trainerService.createProfile("Sarah", "Miller", "PILATES"));
+
+        verifyNoInteractions(gymMetrics);
     }
 }

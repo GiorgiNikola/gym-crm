@@ -143,4 +143,27 @@ class RequestLoggingFilterTest {
         Assertions.assertThrows(IllegalStateException.class, () -> filter.doFilter(request, response, failing));
         Assertions.assertEquals("half written", response.getContentAsString());
     }
+
+    @Test
+    @DisplayName("a prometheus scrape is not logged at all")
+    void skipsActuatorPaths() throws Exception {
+        MockHttpServletRequest scrape = new MockHttpServletRequest("GET", "/actuator/prometheus");
+
+        filter.doFilter(scrape, response, (req, res) -> res.getWriter().write("# HELP ..."));
+
+        Assertions.assertTrue(events().isEmpty(), loggedText());
+        Assertions.assertEquals("# HELP ...", response.getContentAsString());
+    }
+
+    @Test
+    @DisplayName("a path that only looks like actuator is still logged")
+    void stillLogsOrdinaryPaths() throws Exception {
+        MockHttpServletRequest ordinary = new MockHttpServletRequest("GET", "/actuatorish");
+
+        filter.doFilter(ordinary, response, (req, res) -> {
+        });
+
+        Assertions.assertFalse(events().isEmpty());
+        Assertions.assertTrue(loggedText().contains("GET /actuatorish"), loggedText());
+    }
 }

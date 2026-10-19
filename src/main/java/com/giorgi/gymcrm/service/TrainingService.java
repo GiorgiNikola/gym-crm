@@ -4,6 +4,7 @@ import com.giorgi.gymcrm.dao.TraineeDao;
 import com.giorgi.gymcrm.dao.TrainerDao;
 import com.giorgi.gymcrm.dao.TrainingDao;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
+import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
@@ -26,6 +27,7 @@ public class TrainingService {
     private TrainerDao trainerDao;
     private TrainingTypeService trainingTypeService;
     private AuthenticationService authenticationService;
+    private GymMetrics gymMetrics;
 
     @Autowired
     public void setTrainingDao(TrainingDao trainingDao) {
@@ -50,6 +52,11 @@ public class TrainingService {
     @Autowired
     public void setAuthenticationService(AuthenticationService authenticationService) {
         this.authenticationService = authenticationService;
+    }
+
+    @Autowired
+    public void setGymMetrics(GymMetrics gymMetrics) {
+        this.gymMetrics = gymMetrics;
     }
 
     @Transactional
@@ -83,6 +90,7 @@ public class TrainingService {
                 .build();
 
         trainingDao.save(training);
+        gymMetrics.trainingAdded(duration);
         log.info("Added training '{}' for trainee {} with trainer {}", name, traineeUsername, trainerUsername);
         return training;
     }

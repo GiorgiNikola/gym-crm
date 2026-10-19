@@ -2,6 +2,7 @@ package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.dao.TrainerDao;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
+import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
@@ -20,6 +21,7 @@ public class TrainerService {
     private TrainerDao trainerDao;
     private TrainingTypeService trainingTypeService;
     private AuthenticationService authenticationService;
+    private GymMetrics gymMetrics;
     private UsernameResolver usernameResolver;
     private CredentialGenerator credentialGenerator;
 
@@ -36,6 +38,11 @@ public class TrainerService {
     @Autowired
     public void setAuthenticationService(AuthenticationService authenticationService) {
         this.authenticationService = authenticationService;
+    }
+
+    @Autowired
+    public void setGymMetrics(GymMetrics gymMetrics) {
+        this.gymMetrics = gymMetrics;
     }
 
     @Autowired
@@ -70,6 +77,7 @@ public class TrainerService {
                 .build();
 
         trainerDao.save(trainer);
+        gymMetrics.trainerRegistered();
         log.info("Created trainer profile with username: {}", user.getUsername());
         return trainer;
     }
