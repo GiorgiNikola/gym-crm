@@ -81,7 +81,7 @@ class ProfileFetchIntegrationTest {
     }
 
     // These rows are committed, so they have to go before the next test or the next test class.
-    // training_types is left alone: data.sql seeds it as reference data.
+    // training_types is left alone: the V2 migration seeds it as reference data.
     @AfterEach
     void clearSeededRows() {
         JdbcTestUtils.deleteFromTables(new JdbcTemplate(dataSource),

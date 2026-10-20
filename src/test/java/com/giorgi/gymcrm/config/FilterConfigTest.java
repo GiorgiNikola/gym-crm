@@ -13,6 +13,7 @@ import org.springframework.boot.web.servlet.AbstractFilterRegistrationBean;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.web.servlet.ServletContextInitializerBeans;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.core.Ordered;
 import org.springframework.web.filter.CharacterEncodingFilter;
 
 import java.util.List;
@@ -46,19 +47,38 @@ class FilterConfigTest {
         Assertions.assertEquals(Set.of("/*"), Set.copyOf(requestLoggingFilter.getUrlPatterns()));
     }
 
-    @Test
-    @DisplayName("the transaction id filter runs first and the request log right after it")
-    void runsTransactionIdFirstThenRequestLogging() {
+    private int positionOf(Class<? extends Filter> type) {
         List<Filter> filters = registeredFilters();
+        for (int position = 0; position < filters.size(); position++) {
+            if (type.isInstance(filters.get(position))) {
+                return position;
+            }
+        }
+        return Assertions.fail(type.getSimpleName() + " is not registered: " + filters);
+    }
 
-        Assertions.assertInstanceOf(TransactionIdFilter.class, filters.get(0), filters.toString());
-        Assertions.assertInstanceOf(RequestLoggingFilter.class, filters.get(1), filters.toString());
+    // Boot slots its own filters in between, so the positions matter only relative to each other.
+    @Test
+    @DisplayName("encoding runs first, then the transaction id, then the request log")
+    void runsEncodingThenTransactionIdThenRequestLogging() {
+        Assertions.assertEquals(0, positionOf(CharacterEncodingFilter.class), registeredFilters().toString());
+        Assertions.assertTrue(positionOf(CharacterEncodingFilter.class) < positionOf(TransactionIdFilter.class),
+                registeredFilters().toString());
+        Assertions.assertTrue(positionOf(TransactionIdFilter.class) < positionOf(RequestLoggingFilter.class),
+                registeredFilters().toString());
     }
 
     @Test
-    @DisplayName("Boot's character encoding filter is not registered")
-    void leavesRequestEncodingToTheContainer() {
-        Assertions.assertTrue(registeredFilters().stream().noneMatch(CharacterEncodingFilter.class::isInstance),
+    @DisplayName("Boot's character encoding filter is registered")
+    void keepsBootsEncodingFilter() {
+        Assertions.assertTrue(registeredFilters().stream().anyMatch(CharacterEncodingFilter.class::isInstance),
                 registeredFilters().toString());
+    }
+
+    @Test
+    @DisplayName("our filters sit right behind the encoding filter")
+    void ordersOurFiltersAfterEncoding() {
+        Assertions.assertEquals(Ordered.HIGHEST_PRECEDENCE + 1, transactionIdFilter.getOrder());
+        Assertions.assertEquals(Ordered.HIGHEST_PRECEDENCE + 2, requestLoggingFilter.getOrder());
     }
 }

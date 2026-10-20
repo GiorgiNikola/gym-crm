@@ -26,7 +26,7 @@ class TrainingTypeDaoImplTest {
     private TrainingTypeDao trainingTypeDao;
 
     @Test
-    @DisplayName("findByName returns a type seeded by data.sql")
+    @DisplayName("findByName returns a type from the flyway seed")
     void findsSeededTrainingType() {
         TrainingType yoga = trainingTypeDao.findByName("YOGA").orElseThrow();
 

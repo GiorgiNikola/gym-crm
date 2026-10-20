@@ -18,6 +18,8 @@
 
     <properties>
         <java.version>21</java.version>
+        <!-- Boot 4.0.8 manages 11.0.24; the previous module ran on 11.0.26 and we keep it. -->
+        <tomcat.version>11.0.26</tomcat.version>
         <springdoc.version>3.0.3</springdoc.version>
         <jacoco.version>0.8.13</jacoco.version>
     </properties>

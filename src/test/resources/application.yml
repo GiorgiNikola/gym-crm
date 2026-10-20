@@ -15,9 +15,6 @@ spring:
         implicit-strategy: org.hibernate.boot.model.naming.ImplicitNamingStrategyJpaCompliantImpl
         physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
     open-in-view: false
-  servlet:
-    encoding:
-      enabled: false
   web:
     resources:
       add-mappings: false

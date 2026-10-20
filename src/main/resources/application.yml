@@ -12,11 +12,6 @@ spring:
     # the session closes with the service transaction, as before; a lazy association
     # the queries forgot to fetch fails instead of being loaded during rendering
     open-in-view: false
-  servlet:
-    encoding:
-      # Boot's CharacterEncodingFilter would force UTF-8 onto requests that name no charset;
-      # the app never had it, so requests keep the container's default as before
-      enabled: false
   web:
     resources:
       # no static content; an unknown path stays a "No endpoint" 404 problem
