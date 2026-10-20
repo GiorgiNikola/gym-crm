@@ -11,17 +11,22 @@ import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 @Slf4j
 public class RequestLoggingFilter extends OncePerRequestFilter {
 
     private static final int CACHE_LIMIT = 10 * 1024;
-    private static final String ACTUATOR_PREFIX = "/actuator/";
 
-    // Prometheus scrapes every few seconds; logging that would bury the real traffic.
+    // Machine traffic, not gym traffic: prometheus scrapes every few seconds and the docs UI
+    // pulls the spec on every page load, so logging either would bury the real requests.
+    private static final List<String> UNLOGGED_PREFIXES = List.of(
+            "/actuator/", "/swagger-ui.html", "/swagger-ui/", "/v3/api-docs");
+
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return request.getRequestURI().startsWith(ACTUATOR_PREFIX);
+        String uri = request.getRequestURI();
+        return UNLOGGED_PREFIXES.stream().anyMatch(uri::startsWith);
     }
 
     @Override

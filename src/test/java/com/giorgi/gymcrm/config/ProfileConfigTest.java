@@ -98,4 +98,20 @@ class ProfileConfigTest {
     void appLogLevelMatchesTheEnvironment(String profile, String level) throws IOException {
         Assertions.assertEquals(level, property(profile, "logging.level.com.giorgi.gymcrm"));
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"stg", "prod"})
+    @DisplayName("a deployed profile serves neither the spec nor the docs UI")
+    void deployedProfilesTurnTheDocsOff(String profile) throws IOException {
+        Assertions.assertEquals("false", property(profile, "springdoc.api-docs.enabled"));
+        Assertions.assertEquals("false", property(profile, "springdoc.swagger-ui.enabled"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"local", "dev"})
+    @DisplayName("the development profiles leave the docs at the springdoc default")
+    void developmentProfilesSayNothingAboutTheDocs(String profile) throws IOException {
+        Assertions.assertNull(profile(profile).getProperty("springdoc.api-docs.enabled"));
+        Assertions.assertNull(profile(profile).getProperty("springdoc.swagger-ui.enabled"));
+    }
 }

@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.LoggerFactory;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -155,15 +157,25 @@ class RequestLoggingFilterTest {
         Assertions.assertEquals("# HELP ...", response.getContentAsString());
     }
 
-    @Test
-    @DisplayName("a path that only looks like actuator is still logged")
-    void stillLogsOrdinaryPaths() throws Exception {
-        MockHttpServletRequest ordinary = new MockHttpServletRequest("GET", "/actuatorish");
+    @ParameterizedTest
+    @ValueSource(strings = {"/swagger-ui.html", "/swagger-ui/index.html", "/v3/api-docs",
+            "/v3/api-docs/swagger-config"})
+    @DisplayName("the api docs paths are not logged either")
+    void skipsDocsPaths(String uri) throws Exception {
+        filter.doFilter(new MockHttpServletRequest("GET", uri), response, (req, res) -> {
+        });
 
-        filter.doFilter(ordinary, response, (req, res) -> {
+        Assertions.assertTrue(events().isEmpty(), loggedText());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/actuatorish", "/trainees", "/swagger-uish", "/v3/api"})
+    @DisplayName("a path that only looks like machine traffic is still logged")
+    void stillLogsOrdinaryPaths(String uri) throws Exception {
+        filter.doFilter(new MockHttpServletRequest("GET", uri), response, (req, res) -> {
         });
 
         Assertions.assertFalse(events().isEmpty());
-        Assertions.assertTrue(loggedText().contains("GET /actuatorish"), loggedText());
+        Assertions.assertTrue(loggedText().contains("GET " + uri), loggedText());
     }
 }

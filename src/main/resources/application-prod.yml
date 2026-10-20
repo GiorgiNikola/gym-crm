@@ -27,3 +27,10 @@ management:
     health:
       # components yes, their details no: a reader outside the team learns nothing useful
       show-details: never
+
+# The api docs are a development aid: no spec and no UI once the app is deployed.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
