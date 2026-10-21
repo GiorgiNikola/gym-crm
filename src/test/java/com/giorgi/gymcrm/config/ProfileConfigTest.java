@@ -32,7 +32,7 @@ class ProfileConfigTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"local", "dev", "stg", "prod"})
+    @ValueSource(strings = {"local", "dev", "stg", "prod", "standalone"})
     @DisplayName("every profile brings its own database url")
     void everyProfileHasItsOwnUrl(String profile) throws IOException {
         Assertions.assertNotNull(profile(profile).getProperty(URL));
@@ -65,7 +65,7 @@ class ProfileConfigTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"local", "dev", "stg", "prod"})
+    @ValueSource(strings = {"local", "dev", "stg", "prod", "standalone"})
     @DisplayName("no profile lets Hibernate touch the schema")
     void everyProfileOnlyValidates(String profile) throws IOException {
         Assertions.assertEquals("validate", property(profile, DDL_AUTO));
@@ -113,5 +113,47 @@ class ProfileConfigTest {
     void developmentProfilesSayNothingAboutTheDocs(String profile) throws IOException {
         Assertions.assertNull(profile(profile).getProperty("springdoc.api-docs.enabled"));
         Assertions.assertNull(profile(profile).getProperty("springdoc.swagger-ui.enabled"));
+    }
+
+    @Test
+    @DisplayName("standalone runs on in memory h2 with the built in credentials")
+    void standaloneNeedsNoDatabaseOfItsOwn() throws IOException {
+        Assertions.assertEquals("jdbc:h2:mem:gymcrm;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+                property("standalone", URL));
+        Assertions.assertEquals("sa", property("standalone", "spring.datasource.username"));
+        Assertions.assertEquals("", property("standalone", "spring.datasource.password"));
+    }
+
+    @Test
+    @DisplayName("standalone asks for no environment variables")
+    void standaloneReadsNothingFromTheEnvironment() throws IOException {
+        String datasource = property("standalone", URL) + property("standalone", "spring.datasource.username")
+                + property("standalone", "spring.datasource.password");
+
+        Assertions.assertFalse(datasource.contains("${"), datasource);
+    }
+
+    @Test
+    @DisplayName("standalone keeps the small pool")
+    void standaloneUsesTheSmallPool() throws IOException {
+        Assertions.assertEquals("5", property("standalone", POOL));
+    }
+
+    @Test
+    @DisplayName("standalone exposes the same endpoints as local")
+    void standaloneExposesWhatLocalDoes() throws IOException {
+        Assertions.assertEquals(property("local", "management.endpoints.web.exposure.include"),
+                property("standalone", "management.endpoints.web.exposure.include"));
+        Assertions.assertEquals(property("local", "management.endpoint.health.show-details"),
+                property("standalone", "management.endpoint.health.show-details"));
+    }
+
+    @Test
+    @DisplayName("standalone logs at the same levels as local")
+    void standaloneLogsLikeLocal() throws IOException {
+        Assertions.assertEquals(property("local", "logging.level.com.giorgi.gymcrm"),
+                property("standalone", "logging.level.com.giorgi.gymcrm"));
+        Assertions.assertEquals(property("local", "logging.level.org.hibernate.SQL"),
+                property("standalone", "logging.level.org.hibernate.SQL"));
     }
 }
