@@ -31,6 +31,10 @@ COPY --from=builder --chown=gymcrm:gymcrm /build/extracted/application/ ./
 # In-memory H2 by default, override with docker run -e
 ENV SPRING_PROFILES_ACTIVE=standalone
 
+# Console plus a rolling file. Only the image sets these, so a laptop run writes no files.
+ENV LOGGING_CONFIG=classpath:logback-container.xml
+ENV LOGGING_FILE_NAME=/app/logs/gym-crm.log
+
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \

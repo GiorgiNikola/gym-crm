@@ -166,6 +166,135 @@ Two things to know when reading the login counter. It counts authentications, no
 
 No usernames in tags. One time series per user would be unbounded.
 
+## Running in Docker
+
+You need Docker Desktop. Nothing else: no Java, no Maven, no PostgreSQL on the host.
+
+### The image on its own
+
+```bash
+docker build -t gym-crm:latest .
+docker run --rm -d --name gym-crm -p 8080:8080 gym-crm:latest
+```
+
+That starts the `standalone` profile, which the image sets as its default. Standalone means
+in-memory H2 inside the container: no database to connect to, Flyway builds the schema on every
+start, and the data is gone when the container stops. Good for a demo or a smoke test, useless
+for anything you want to keep.
+
+```bash
+docker stop gym-crm
+```
+
+### With a PostgreSQL container
+
+Copy the example file and put a password in it:
+
+```bash
+cp .env.docker.example .env.docker
+```
+
+`.env.docker` is git ignored. It holds `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` for
+the database container and `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` for the app.
+
+Plain docker, in order:
+
+```bash
+docker network create gymcrm-net
+
+docker run -d --name gymcrm-db --network gymcrm-net \
+  -v gymcrm-pgdata:/var/lib/postgresql/data \
+  --env-file .env.docker postgres:17.11
+
+docker exec gymcrm-db pg_isready -U gymcrm
+
+docker run -d --name gym-crm --network gymcrm-net -p 8080:8080 \
+  --env-file .env.docker -e SPRING_PROFILES_ACTIVE=dev gym-crm:latest
+```
+
+To tear that down and keep the data:
+
+```bash
+docker rm -f gym-crm gymcrm-db
+docker network rm gymcrm-net
+```
+
+The same thing with compose:
+
+```bash
+docker compose up -d --build
+docker compose down
+```
+
+`docker compose down` leaves the volume alone, so the data survives. Add `-v` when you want the
+database wiped too:
+
+```bash
+docker compose down -v
+```
+
+Compose waits for the database: the `db` service has a `pg_isready` healthcheck and the `app`
+service depends on it with `condition: service_healthy`, so the app never starts against a
+database that is not accepting connections yet.
+
+### Why gymcrm-db and not localhost
+
+`DB_URL` points at `jdbc:postgresql://gymcrm-db:5432/gymcrm`. Inside a container, `localhost` is
+that container, so `localhost:5432` would be the app itself. On a user defined network, Docker
+resolves container names, so `gymcrm-db` is the database container. You can see it:
+
+```bash
+docker exec gym-crm getent hosts gymcrm-db
+```
+
+The database publishes no port. Nothing outside the network can reach it, and it cannot clash
+with a PostgreSQL already running on the host. Reach it through the app, or with psql inside the
+container:
+
+```bash
+docker exec gymcrm-db psql -U gymcrm -d gymcrm -c "select username from users;"
+```
+
+### Logs
+
+The container logs to the console and to a rolling file at `/app/logs/gym-crm.log`, capped at
+10 MB with 3 files kept. Only the image turns the file on, through `LOGGING_CONFIG` and
+`LOGGING_FILE_NAME`, so running the app on your machine writes no files.
+
+```bash
+docker logs gym-crm --tail 20
+docker exec -it gym-crm bash
+tail -n 20 /app/logs/gym-crm.log
+```
+
+Every request carries a transaction ID, and you can choose it yourself, which makes one request
+easy to find in the file:
+
+```bash
+curl -s -X POST http://localhost:8080/trainees \
+  -H "Content-Type: application/json" -d '{"firstName":"Log","lastName":"Case"}'
+
+curl -i http://localhost:8080/training-types \
+  -H "Authorization: Basic $(printf 'Log.Case:the-generated-password' | base64)" \
+  -H "X-Transaction-Id: demo-123"
+
+docker exec gym-crm grep demo-123 /app/logs/gym-crm.log
+```
+
+Passwords are masked and headers are never logged, so the file holds no credentials.
+
+### The image
+
+Multi-stage: a Maven stage builds the jar, and the runtime stage carries only a JRE and the app.
+The jar is extracted into layers with Boot's jarmode tools, dependencies first and application
+last, so a code change rebuilds a few hundred kB instead of the whole thing. It runs as the
+non-root user `gymcrm`, and a HEALTHCHECK calls `/actuator/health`, which is what compose waits
+on.
+
+The Report service and the message queue are not built yet. When they are, they join the same
+`gymcrm-net` network and reach the app by container name, the same way the app reaches the
+database.
+
 ## Trying it
 
 `postman/gym-crm.postman_collection.json` holds 63 requests with assertions on every one. Import it, start the app, and run the whole collection with the Collection Runner. It registers fresh users on every run, so you can run it again without restarting.

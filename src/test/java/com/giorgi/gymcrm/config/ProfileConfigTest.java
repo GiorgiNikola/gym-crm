@@ -79,10 +79,17 @@ class ProfileConfigTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"local,true", "dev,true", "stg,false", "prod,false"})
-    @DisplayName("sql only shows up in the two development profiles")
-    void sqlLoggingIsOffWhenDeployed(String profile, String showSql) throws IOException {
-        Assertions.assertEquals(showSql, property(profile, "spring.jpa.show-sql"));
+    @ValueSource(strings = {"local", "dev", "stg", "prod", "standalone"})
+    @DisplayName("no profile turns on show-sql, which would bypass logback")
+    void noProfileSetsShowSql(String profile) throws IOException {
+        Assertions.assertNull(profile(profile).getProperty("spring.jpa.show-sql"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"local,DEBUG", "dev,DEBUG", "stg,OFF", "prod,OFF", "standalone,DEBUG"})
+    @DisplayName("the sql logger level is what decides whether queries are logged")
+    void sqlLoggerLevelMatchesTheEnvironment(String profile, String level) throws IOException {
+        Assertions.assertEquals(level, property(profile, "logging.level.org.hibernate.SQL"));
     }
 
     @Test

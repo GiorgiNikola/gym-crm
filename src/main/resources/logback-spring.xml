@@ -1,11 +1,7 @@
 <configuration>
 
-    <!-- Levels live in the profile YAMLs under logging.level, so there is one place to look. -->
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%d{HH:mm:ss.SSS} %-5level [%X{transactionId}] %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
+    <!-- Console only. Levels live in the profile YAMLs under logging.level. -->
+    <include resource="logback-common.xml"/>
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>

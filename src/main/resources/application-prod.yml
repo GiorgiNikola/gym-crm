@@ -10,13 +10,13 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: false
 
 logging:
   level:
     root: WARN
     com.giorgi.gymcrm: INFO
-    org.hibernate.SQL: OFF
+    # quoted, or yaml reads it as the boolean false
+    org.hibernate.SQL: "OFF"
 
 management:
   endpoints:
