@@ -3,6 +3,7 @@ package com.giorgi.gymcrm.service;
 import com.giorgi.gymcrm.dao.TraineeDao;
 import com.giorgi.gymcrm.dao.TrainerDao;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
+import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.User;
@@ -27,6 +28,7 @@ public class TraineeService {
     private TraineeDao traineeDao;
     private TrainerDao trainerDao;
     private AuthenticationService authenticationService;
+    private GymMetrics gymMetrics;
     private UsernameResolver usernameResolver;
     private CredentialGenerator credentialGenerator;
 
@@ -43,6 +45,11 @@ public class TraineeService {
     @Autowired
     public void setAuthenticationService(AuthenticationService authenticationService) {
         this.authenticationService = authenticationService;
+    }
+
+    @Autowired
+    public void setGymMetrics(GymMetrics gymMetrics) {
+        this.gymMetrics = gymMetrics;
     }
 
     @Autowired
@@ -75,6 +82,7 @@ public class TraineeService {
                 .build();
 
         traineeDao.save(trainee);
+        gymMetrics.traineeRegistered();
         log.info("Created trainee profile with username: {}", user.getUsername());
         return trainee;
     }
@@ -82,49 +90,32 @@ public class TraineeService {
     @Transactional(readOnly = true)
     public Trainee selectByUsername(String username, String password) {
         authenticationService.authenticate(username, password);
-        return findOrThrow(username);
-    }
-
-    @Transactional
-    public void changePassword(String username, String password, String newPassword) {
-        authenticationService.authenticate(username, password);
-        requireText(newPassword, "New password");
-
-        Trainee trainee = findOrThrow(username);
-        trainee.getUser().setPassword(newPassword);
-        traineeDao.update(trainee);
-        log.info("Password changed for trainee: {}", username);
+        return findProfileOrThrow(username);
     }
 
     @Transactional
     public Trainee updateProfile(String username, String password,
                                  String firstName, String lastName,
-                                 LocalDate dateOfBirth, String address) {
+                                 LocalDate dateOfBirth, String address, boolean isActive) {
         authenticationService.authenticate(username, password);
         requireText(firstName, "First name");
         requireText(lastName, "Last name");
 
-        Trainee trainee = findOrThrow(username);
-        trainee.getUser().setFirstName(firstName);
-        trainee.getUser().setLastName(lastName);
+        Trainee trainee = findProfileOrThrow(username);
+        User user = trainee.getUser();
+        user.setFirstName(firstName);
+        user.setLastName(lastName);
         trainee.setDateOfBirth(dateOfBirth);
         trainee.setAddress(address);
+
+        if (user.isActive() != isActive) {
+            user.setActive(isActive);
+            log.info("Trainee {} is {}", username, isActive ? "activated" : "deactivated");
+        }
 
         Trainee updated = traineeDao.update(trainee);
         log.info("Updated trainee profile: {}", username);
         return updated;
-    }
-
-    @Transactional
-    public void activate(String username, String password) {
-        authenticationService.authenticate(username, password);
-        setActive(username, true);
-    }
-
-    @Transactional
-    public void deactivate(String username, String password) {
-        authenticationService.authenticate(username, password);
-        setActive(username, false);
     }
 
     @Transactional
@@ -143,7 +134,7 @@ public class TraineeService {
             throw new IllegalArgumentException("Trainer usernames must not be null");
         }
 
-        Trainee trainee = findOrThrow(username);
+        Trainee trainee = findProfileOrThrow(username);
 
         Set<Trainer> trainers = new HashSet<>(trainerDao.findAllByUsernames(trainerUsernames));
         if (trainers.size() != trainerUsernames.size()) {
@@ -168,19 +159,13 @@ public class TraineeService {
         return trainerDao.findNotAssignedToTrainee(username);
     }
 
-    private void setActive(String username, boolean active) {
-        Trainee trainee = findOrThrow(username);
-        if (trainee.getUser().isActive() == active) {
-            throw new IllegalArgumentException(
-                    "Trainee " + username + " is already " + (active ? "active" : "inactive"));
-        }
-        trainee.getUser().setActive(active);
-        traineeDao.update(trainee);
-        log.info("Trainee {} set to {}", username, active ? "active" : "inactive");
-    }
-
     private Trainee findOrThrow(String username) {
         return traineeDao.findByUsername(username)
+                .orElseThrow(() -> new ProfileNotFoundException("Trainee not found: " + username));
+    }
+
+    private Trainee findProfileOrThrow(String username) {
+        return traineeDao.findProfileByUsername(username)
                 .orElseThrow(() -> new ProfileNotFoundException("Trainee not found: " + username));
     }
 }

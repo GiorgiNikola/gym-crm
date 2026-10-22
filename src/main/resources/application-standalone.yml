@@ -1,0 +1,28 @@
+# No external dependencies: in-memory H2, no DB_USERNAME or DB_PASSWORD needed. For the
+# container image, where the app has to come up on its own.
+spring:
+  datasource:
+    url: jdbc:h2:mem:gymcrm;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    hikari:
+      maximum-pool-size: 5
+  jpa:
+    hibernate:
+      # Flyway makes Boot default this to none, which would quietly skip the check that the
+      # migrations still match the entities. Every other profile validates, so this one does too.
+      ddl-auto: validate
+
+logging:
+  level:
+    com.giorgi.gymcrm: DEBUG
+    org.hibernate.SQL: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always

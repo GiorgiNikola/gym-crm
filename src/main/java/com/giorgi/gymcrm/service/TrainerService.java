@@ -1,8 +1,8 @@
 package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.dao.TrainerDao;
-import com.giorgi.gymcrm.dao.TrainingTypeDao;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
+import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
@@ -19,8 +19,9 @@ import static com.giorgi.gymcrm.util.Validations.requireText;
 public class TrainerService {
 
     private TrainerDao trainerDao;
-    private TrainingTypeDao trainingTypeDao;
+    private TrainingTypeService trainingTypeService;
     private AuthenticationService authenticationService;
+    private GymMetrics gymMetrics;
     private UsernameResolver usernameResolver;
     private CredentialGenerator credentialGenerator;
 
@@ -30,13 +31,18 @@ public class TrainerService {
     }
 
     @Autowired
-    public void setTrainingTypeDao(TrainingTypeDao trainingTypeDao) {
-        this.trainingTypeDao = trainingTypeDao;
+    public void setTrainingTypeService(TrainingTypeService trainingTypeService) {
+        this.trainingTypeService = trainingTypeService;
     }
 
     @Autowired
     public void setAuthenticationService(AuthenticationService authenticationService) {
         this.authenticationService = authenticationService;
+    }
+
+    @Autowired
+    public void setGymMetrics(GymMetrics gymMetrics) {
+        this.gymMetrics = gymMetrics;
     }
 
     @Autowired
@@ -55,7 +61,7 @@ public class TrainerService {
         requireText(lastName, "Last name");
         requireText(specializationName, "Specialization");
 
-        TrainingType specialization = findTypeOrThrow(specializationName);
+        TrainingType specialization = trainingTypeService.requireByName(specializationName);
 
         User user = User.builder()
                 .firstName(firstName)
@@ -71,6 +77,7 @@ public class TrainerService {
                 .build();
 
         trainerDao.save(trainer);
+        gymMetrics.trainerRegistered();
         log.info("Created trainer profile with username: {}", user.getUsername());
         return trainer;
     }
@@ -78,69 +85,33 @@ public class TrainerService {
     @Transactional(readOnly = true)
     public Trainer selectByUsername(String username, String password) {
         authenticationService.authenticate(username, password);
-        return findOrThrow(username);
-    }
-
-    @Transactional
-    public void changePassword(String username, String password, String newPassword) {
-        authenticationService.authenticate(username, password);
-        requireText(newPassword, "New password");
-
-        Trainer trainer = findOrThrow(username);
-        trainer.getUser().setPassword(newPassword);
-        trainerDao.update(trainer);
-        log.info("Password changed for trainer: {}", username);
+        return findProfileOrThrow(username);
     }
 
     @Transactional
     public Trainer updateProfile(String username, String password,
-                                 String firstName, String lastName,
-                                 String specializationName) {
+                                 String firstName, String lastName, boolean isActive) {
         authenticationService.authenticate(username, password);
         requireText(firstName, "First name");
         requireText(lastName, "Last name");
-        requireText(specializationName, "Specialization");
 
-        Trainer trainer = findOrThrow(username);
-        trainer.getUser().setFirstName(firstName);
-        trainer.getUser().setLastName(lastName);
-        trainer.setSpecialization(findTypeOrThrow(specializationName));
+        Trainer trainer = findProfileOrThrow(username);
+        User user = trainer.getUser();
+        user.setFirstName(firstName);
+        user.setLastName(lastName);
+
+        if (user.isActive() != isActive) {
+            user.setActive(isActive);
+            log.info("Trainer {} is {}", username, isActive ? "activated" : "deactivated");
+        }
 
         Trainer updated = trainerDao.update(trainer);
         log.info("Updated trainer profile: {}", username);
         return updated;
     }
 
-    @Transactional
-    public void activate(String username, String password) {
-        authenticationService.authenticate(username, password);
-        setActive(username, true);
-    }
-
-    @Transactional
-    public void deactivate(String username, String password) {
-        authenticationService.authenticate(username, password);
-        setActive(username, false);
-    }
-
-    private void setActive(String username, boolean active) {
-        Trainer trainer = findOrThrow(username);
-        if (trainer.getUser().isActive() == active) {
-            throw new IllegalArgumentException(
-                    "Trainer " + username + " is already " + (active ? "active" : "inactive"));
-        }
-        trainer.getUser().setActive(active);
-        trainerDao.update(trainer);
-        log.info("Trainer {} set to {}", username, active ? "active" : "inactive");
-    }
-
-    private Trainer findOrThrow(String username) {
-        return trainerDao.findByUsername(username)
+    private Trainer findProfileOrThrow(String username) {
+        return trainerDao.findProfileByUsername(username)
                 .orElseThrow(() -> new ProfileNotFoundException("Trainer not found: " + username));
-    }
-
-    private TrainingType findTypeOrThrow(String name) {
-        return trainingTypeDao.findByName(name)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown training type: " + name));
     }
 }

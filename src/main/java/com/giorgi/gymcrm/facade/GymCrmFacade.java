@@ -3,9 +3,12 @@ package com.giorgi.gymcrm.facade;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
+import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.service.TraineeService;
 import com.giorgi.gymcrm.service.TrainerService;
 import com.giorgi.gymcrm.service.TrainingService;
+import com.giorgi.gymcrm.service.TrainingTypeService;
+import com.giorgi.gymcrm.service.UserService;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -18,13 +21,23 @@ public class GymCrmFacade {
     private final TraineeService traineeService;
     private final TrainerService trainerService;
     private final TrainingService trainingService;
+    private final TrainingTypeService trainingTypeService;
+    private final UserService userService;
 
     public GymCrmFacade(TraineeService traineeService,
                         TrainerService trainerService,
-                        TrainingService trainingService) {
+                        TrainingService trainingService,
+                        TrainingTypeService trainingTypeService,
+                        UserService userService) {
         this.traineeService = traineeService;
         this.trainerService = trainerService;
         this.trainingService = trainingService;
+        this.trainingTypeService = trainingTypeService;
+        this.userService = userService;
+    }
+
+    public void login(String username, String password) {
+        userService.login(username, password);
     }
 
     public Trainee createTraineeProfile(String firstName, String lastName,
@@ -36,22 +49,18 @@ public class GymCrmFacade {
         return traineeService.selectByUsername(username, password);
     }
 
-    public void changeTraineePassword(String username, String password, String newPassword) {
-        traineeService.changePassword(username, password, newPassword);
+    public void changePassword(String username, String password, String newPassword) {
+        userService.changePassword(username, password, newPassword);
     }
 
     public Trainee updateTraineeProfile(String username, String password,
                                         String firstName, String lastName,
-                                        LocalDate dateOfBirth, String address) {
-        return traineeService.updateProfile(username, password, firstName, lastName, dateOfBirth, address);
+                                        LocalDate dateOfBirth, String address, boolean isActive) {
+        return traineeService.updateProfile(username, password, firstName, lastName, dateOfBirth, address, isActive);
     }
 
-    public void activateTrainee(String username, String password) {
-        traineeService.activate(username, password);
-    }
-
-    public void deactivateTrainee(String username, String password) {
-        traineeService.deactivate(username, password);
+    public void changeStatus(String username, String password, boolean active) {
+        userService.changeStatus(username, password, active);
     }
 
     public void deleteTraineeProfile(String username, String password) {
@@ -74,30 +83,16 @@ public class GymCrmFacade {
         return trainerService.selectByUsername(username, password);
     }
 
-    public void changeTrainerPassword(String username, String password, String newPassword) {
-        trainerService.changePassword(username, password, newPassword);
-    }
-
     public Trainer updateTrainerProfile(String username, String password,
-                                        String firstName, String lastName,
-                                        String specializationName) {
-        return trainerService.updateProfile(username, password, firstName, lastName, specializationName);
-    }
-
-    public void activateTrainer(String username, String password) {
-        trainerService.activate(username, password);
-    }
-
-    public void deactivateTrainer(String username, String password) {
-        trainerService.deactivate(username, password);
+                                        String firstName, String lastName, boolean isActive) {
+        return trainerService.updateProfile(username, password, firstName, lastName, isActive);
     }
 
     public Training addTraining(String username, String password,
                                 String traineeUsername, String trainerUsername,
-                                String name, String typeName,
-                                LocalDate date, Long duration) {
+                                String name, LocalDate date, Long duration) {
         return trainingService.addTraining(username, password, traineeUsername, trainerUsername,
-                name, typeName, date, duration);
+                name, date, duration);
     }
 
     public List<Training> getTraineeTrainings(String username, String password,
@@ -110,5 +105,9 @@ public class GymCrmFacade {
                                               LocalDate fromDate, LocalDate toDate,
                                               String traineeName) {
         return trainingService.getTrainerTrainings(username, password, fromDate, toDate, traineeName);
+    }
+
+    public List<TrainingType> getTrainingTypes(String username, String password) {
+        return trainingTypeService.findAll(username, password);
     }
 }

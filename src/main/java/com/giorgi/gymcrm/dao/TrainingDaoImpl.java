@@ -53,8 +53,7 @@ public class TrainingDaoImpl implements TrainingDao {
             predicates.add(cb.lessThanOrEqualTo(training.get("date"), toDate));
         }
         if (trainerName != null && !trainerName.isBlank()) {
-            predicates.add(cb.like(cb.lower(trainerUser.get("firstName")),
-                    "%" + trainerName.toLowerCase() + "%"));
+            predicates.add(nameMatches(cb, trainerUser, trainerName));
         }
         if (trainingTypeName != null && !trainingTypeName.isBlank()) {
             predicates.add(cb.equal(type.get("name"), trainingTypeName));
@@ -94,8 +93,7 @@ public class TrainingDaoImpl implements TrainingDao {
             predicates.add(cb.lessThanOrEqualTo(training.get("date"), toDate));
         }
         if (traineeName != null && !traineeName.isBlank()) {
-            predicates.add(cb.like(cb.lower(traineeUser.get("firstName")),
-                    "%" + traineeName.toLowerCase() + "%"));
+            predicates.add(nameMatches(cb, traineeUser, traineeName));
         }
 
         query.select(training)
@@ -103,5 +101,15 @@ public class TrainingDaoImpl implements TrainingDao {
                 .orderBy(cb.asc(training.get("date")));
 
         return entityManager.createQuery(query).getResultList();
+    }
+
+    // Matches the first name, the last name, or the two together, case insensitive and partial.
+    private Predicate nameMatches(CriteriaBuilder cb, Path<User> user, String value) {
+        Expression<String> firstName = cb.lower(user.get("firstName"));
+        Expression<String> lastName = cb.lower(user.get("lastName"));
+        Expression<String> fullName = cb.concat(cb.concat(firstName, " "), lastName);
+        String pattern = "%" + value.toLowerCase() + "%";
+
+        return cb.or(cb.like(firstName, pattern), cb.like(lastName, pattern), cb.like(fullName, pattern));
     }
 }

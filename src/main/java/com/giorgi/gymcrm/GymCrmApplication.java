@@ -1,17 +1,14 @@
 package com.giorgi.gymcrm;
 
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
-@Configuration
-@ComponentScan
+@SpringBootApplication
+@ConfigurationPropertiesScan
 public class GymCrmApplication {
 
     public static void main(String[] args) {
-        AnnotationConfigApplicationContext context =
-                new AnnotationConfigApplicationContext(GymCrmApplication.class);
-        context.close();
+        SpringApplication.run(GymCrmApplication.class, args);
     }
-
 }

@@ -3,12 +3,11 @@ package com.giorgi.gymcrm.service;
 import com.giorgi.gymcrm.dao.TraineeDao;
 import com.giorgi.gymcrm.dao.TrainerDao;
 import com.giorgi.gymcrm.dao.TrainingDao;
-import com.giorgi.gymcrm.dao.TrainingTypeDao;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
+import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
-import com.giorgi.gymcrm.model.TrainingType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -26,8 +25,9 @@ public class TrainingService {
     private TrainingDao trainingDao;
     private TraineeDao traineeDao;
     private TrainerDao trainerDao;
-    private TrainingTypeDao trainingTypeDao;
+    private TrainingTypeService trainingTypeService;
     private AuthenticationService authenticationService;
+    private GymMetrics gymMetrics;
 
     @Autowired
     public void setTrainingDao(TrainingDao trainingDao) {
@@ -45,8 +45,8 @@ public class TrainingService {
     }
 
     @Autowired
-    public void setTrainingTypeDao(TrainingTypeDao trainingTypeDao) {
-        this.trainingTypeDao = trainingTypeDao;
+    public void setTrainingTypeService(TrainingTypeService trainingTypeService) {
+        this.trainingTypeService = trainingTypeService;
     }
 
     @Autowired
@@ -54,16 +54,19 @@ public class TrainingService {
         this.authenticationService = authenticationService;
     }
 
+    @Autowired
+    public void setGymMetrics(GymMetrics gymMetrics) {
+        this.gymMetrics = gymMetrics;
+    }
+
     @Transactional
     public Training addTraining(String username, String password,
                                 String traineeUsername, String trainerUsername,
-                                String name, String typeName,
-                                LocalDate date, Long duration) {
+                                String name, LocalDate date, Long duration) {
         authenticationService.authenticate(username, password);
         requireText(traineeUsername, "Trainee username");
         requireText(trainerUsername, "Trainer username");
         requireText(name, "Training name");
-        requireText(typeName, "Training type");
 
         if (date == null) {
             throw new IllegalArgumentException("Training date must not be null");
@@ -76,24 +79,18 @@ public class TrainingService {
                 .orElseThrow(() -> new ProfileNotFoundException("Trainee not found: " + traineeUsername));
         Trainer trainer = trainerDao.findByUsername(trainerUsername)
                 .orElseThrow(() -> new ProfileNotFoundException("Trainer not found: " + trainerUsername));
-        TrainingType type = trainingTypeDao.findByName(typeName)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown training type: " + typeName));
-
-        if (!trainer.getSpecialization().getId().equals(type.getId())) {
-            throw new IllegalArgumentException("Training type " + typeName
-                    + " does not match the specialization of trainer " + trainerUsername);
-        }
 
         Training training = Training.builder()
                 .trainee(trainee)
                 .trainer(trainer)
                 .name(name)
-                .type(type)
+                .type(trainer.getSpecialization())
                 .date(date)
                 .duration(duration)
                 .build();
 
         trainingDao.save(training);
+        gymMetrics.trainingAdded(duration);
         log.info("Added training '{}' for trainee {} with trainer {}", name, traineeUsername, trainerUsername);
         return training;
     }
@@ -103,6 +100,11 @@ public class TrainingService {
                                               LocalDate fromDate, LocalDate toDate,
                                               String trainerName, String typeName) {
         authenticationService.authenticate(username, password);
+        requireValidRange(fromDate, toDate);
+        if (typeName != null && !typeName.isBlank()) {
+            trainingTypeService.requireByName(typeName);
+        }
+
         return trainingDao.findTraineeTrainings(username, fromDate, toDate, trainerName, typeName);
     }
 
@@ -111,6 +113,14 @@ public class TrainingService {
                                               LocalDate fromDate, LocalDate toDate,
                                               String traineeName) {
         authenticationService.authenticate(username, password);
+        requireValidRange(fromDate, toDate);
+
         return trainingDao.findTrainerTrainings(username, fromDate, toDate, traineeName);
+    }
+
+    private void requireValidRange(LocalDate fromDate, LocalDate toDate) {
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            throw new IllegalArgumentException("The from date " + fromDate + " is after the to date " + toDate);
+        }
     }
 }

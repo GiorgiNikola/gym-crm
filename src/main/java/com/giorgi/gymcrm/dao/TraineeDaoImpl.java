@@ -43,4 +43,20 @@ public class TraineeDaoImpl implements TraineeDao {
                 .getResultStream()
                 .findFirst();
     }
+
+    @Override
+    public Optional<Trainee> findProfileByUsername(String username) {
+        return entityManager.createQuery("""
+                select t from Trainee t
+                join fetch t.user u
+                left join fetch t.trainers tr
+                left join fetch tr.user
+                left join fetch tr.specialization
+                where u.username = :username
+                """, Trainee.class)
+                .setParameter("username", username)
+                .getResultList()
+                .stream()
+                .findFirst();
+    }
 }

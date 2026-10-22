@@ -2,6 +2,7 @@ package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.dao.UserDao;
 import com.giorgi.gymcrm.exception.AuthenticationException;
+import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.User;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
@@ -23,6 +24,9 @@ class AuthenticationServiceTest {
 
     @Mock
     private UserDao userDao;
+
+    @Mock
+    private GymMetrics gymMetrics;
 
     @InjectMocks
     private AuthenticationService authenticationService;
@@ -84,5 +88,35 @@ class AuthenticationServiceTest {
                 () -> authenticationService.authenticate("John.Smith", password));
 
         verifyNoInteractions(userDao);
+    }
+
+    @Test
+    @DisplayName("a good password counts as a successful login")
+    void countsSuccessfulLogin() {
+        when(userDao.findByUsername("John.Smith")).thenReturn(Optional.of(john()));
+
+        authenticationService.authenticate("John.Smith", "aX7kQ2mN9p");
+
+        verify(gymMetrics).loginSucceeded();
+    }
+
+    @Test
+    @DisplayName("a wrong password counts as a failed login")
+    void countsFailedLogin() {
+        when(userDao.findByUsername("John.Smith")).thenReturn(Optional.of(john()));
+
+        Assertions.assertThrows(AuthenticationException.class,
+                () -> authenticationService.authenticate("John.Smith", "wrongPassword"));
+
+        verify(gymMetrics).loginFailed();
+    }
+
+    @Test
+    @DisplayName("a blank username is not counted as a login at all")
+    void doesNotCountMalformedCredentials() {
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> authenticationService.authenticate("  ", "aX7kQ2mN9p"));
+
+        verifyNoInteractions(gymMetrics);
     }
 }

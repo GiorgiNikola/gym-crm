@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:17.11
+    container_name: gymcrm-db
+    env_file: .env.docker
+    networks: [gymcrm-net]
+    volumes:
+      - gymcrm-pgdata:/var/lib/postgresql/data
+    # No ports: the database is reachable from the app container and nowhere else.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  app:
+    build: .
+    image: gym-crm:latest
+    container_name: gym-crm
+    env_file: .env.docker
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+    networks: [gymcrm-net]
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        # Waits for pg_isready, not just for the container to exist.
+        condition: service_healthy
+
+networks:
+  gymcrm-net:
+    # Without an explicit name compose would prefix it with the project name.
+    name: gymcrm-net
+
+volumes:
+  gymcrm-pgdata:
+    # Same volume the plain docker commands use, so the data carries over.
+    name: gymcrm-pgdata
