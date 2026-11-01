@@ -2,7 +2,6 @@
   "info": {
     "_postman_id": "082122a0-a020-4d3b-a547-c211e0898a95",
     "name": "gym-crm",
-    "description": "Automated checks for training types, registration, login, status and password. Run with the Collection Runner from the desktop app against a running local server. Each run registers fresh users, so it can be repeated without restarting.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "34605552"
   },
@@ -23,7 +22,9 @@
                   "pm.test('username and password returned', () => { pm.expect(body.username).to.be.a('string'); pm.expect(body.password).to.be.a('string'); });",
                   "pm.test('Location points to the trainer', () => pm.expect(pm.response.headers.get('Location')).to.include('/trainers/' + body.username));",
                   "pm.collectionVariables.set('trainerUsername', body.username);",
-                  "pm.collectionVariables.set('trainerPassword', body.password);"
+                  "pm.collectionVariables.set('trainerPassword', body.password);",
+                  "pm.test('token returned', () => pm.expect(body.token).to.be.a('string'));",
+                  "pm.collectionVariables.set('trainerToken', body.token);"
                 ]
               }
             }
@@ -73,7 +74,9 @@
                   "pm.test('username starts with John.Smith', () => pm.expect(body.username).to.match(/^John\\.Smith\\d*$/));",
                   "pm.test('Location points to the trainee', () => pm.expect(pm.response.headers.get('Location')).to.include('/trainees/' + body.username));",
                   "pm.collectionVariables.set('traineeUsername', body.username);",
-                  "pm.collectionVariables.set('traineePassword', body.password);"
+                  "pm.collectionVariables.set('traineePassword', body.password);",
+                  "pm.test('token returned', () => pm.expect(body.token).to.be.a('string'));",
+                  "pm.collectionVariables.set('traineeToken', body.token);"
                 ]
               }
             }
@@ -311,14 +314,34 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('token returned', () => pm.expect(body.token).to.be.a('string'));",
+                  "pm.collectionVariables.set('traineeToken', body.token);"
                 ]
               }
             }
           ],
           "request": {
-            "method": "GET",
-            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"{{traineeUsername}}\",\"password\":\"{{traineePassword}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/auth/login",
               "host": [
@@ -341,29 +364,31 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
-                  "pm.test('WWW-Authenticate header present', () => pm.expect(pm.response.headers.get('WWW-Authenticate')).to.include('Basic'));"
+                  "pm.test('no token in the body', () => pm.expect(pm.response.text()).to.not.include('token'));"
                 ]
               }
             }
           ],
           "request": {
             "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{traineeUsername}}",
-                  "type": "string"
-                },
-                {
-                  "key": "password",
-                  "value": "wrong",
-                  "type": "string"
-                }
-              ]
+              "type": "noauth"
             },
-            "method": "GET",
-            "header": [],
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"{{traineeUsername}}\",\"password\":\"wrong\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/auth/login",
               "host": [
@@ -378,14 +403,15 @@
           "response": []
         },
         {
-          "name": "Login without credentials is 401",
+          "name": "Login without credentials is 400",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('validation errors returned', () => pm.expect(pm.response.json().errors).to.be.an('object'));"
                 ]
               }
             }
@@ -394,8 +420,22 @@
             "auth": {
               "type": "noauth"
             },
-            "method": "GET",
-            "header": [],
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"\",\"password\":\"\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/auth/login",
               "host": [
@@ -446,7 +486,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('Bearer challenge', () => pm.expect(pm.response.headers.get('WWW-Authenticate')).to.include('Bearer'));"
                 ]
               }
             }
@@ -464,6 +505,201 @@
               ],
               "path": [
                 "training-types"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Lockout - Wrong password 1 of 3",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('lockUsername', 'Lock.Test' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"{{lockUsername}}\",\"password\":\"wrong\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Lockout - Wrong password 2 of 3",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"{{lockUsername}}\",\"password\":\"wrong\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Lockout - Wrong password 3 of 3",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"{{lockUsername}}\",\"password\":\"wrong\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Lockout - Fourth attempt is 429",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('429 Too Many Requests', () => pm.response.to.have.status(429));",
+                  "pm.test('Retry-After in seconds', () => pm.expect(Number(pm.response.headers.get('Retry-After'))).to.be.within(1, 300));",
+                  "pm.test('problem detail body', () => pm.expect(pm.response.json().status).to.equal(429));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"{{lockUsername}}\",\"password\":\"wrong\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
               ]
             }
           },
@@ -714,9 +950,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "PUT",
             "header": [
               {
@@ -762,9 +995,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "PUT",
             "header": [
               {
@@ -819,9 +1049,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
             "method": "PUT",
             "header": [
               {
@@ -867,22 +1094,24 @@
           ],
           "request": {
             "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{traineeUsername}}",
-                  "type": "string"
-                },
-                {
-                  "key": "password",
-                  "value": "{{oldTraineePassword}}",
-                  "type": "string"
-                }
-              ]
+              "type": "noauth"
             },
-            "method": "GET",
-            "header": [],
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"{{traineeUsername}}\",\"password\":\"{{oldTraineePassword}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/auth/login",
               "host": [
@@ -904,14 +1133,32 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('traineeToken', pm.response.json().token);"
                 ]
               }
             }
           ],
           "request": {
-            "method": "GET",
-            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\":\"{{traineeUsername}}\",\"password\":\"{{traineePassword}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{baseUrl}}/auth/login",
               "host": [
@@ -1025,6 +1272,181 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "CORS preflight from an allowed origin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK without a token', () => pm.response.to.have.status(200));",
+                  "pm.test('origin allowed', () => pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.equal('http://localhost:3000'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "OPTIONS",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:3000"
+              },
+              {
+                "key": "Access-Control-Request-Method",
+                "value": "GET"
+              },
+              {
+                "key": "Access-Control-Request-Headers",
+                "value": "Authorization"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/training-types",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "training-types"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Logout",
+      "item": [
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.sendRequest({",
+                  "  url: pm.collectionVariables.get('baseUrl') + '/auth/login',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ username: pm.collectionVariables.get('trainerUsername'), password: pm.collectionVariables.get('trainerPassword') }) }",
+                  "}, (err, res) => pm.collectionVariables.set('logoutToken', res.json().token));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{logoutToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logged out token is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('invalid_token challenge', () => pm.expect(pm.response.headers.get('WWW-Authenticate')).to.include('invalid_token'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{logoutToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/trainers/{{trainerUsername}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "trainers",
+                "{{trainerUsername}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout without a token is 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": []
         }
       ]
     },
@@ -1079,16 +1501,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{trainerUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{trainerPassword}}",
+              "key": "token",
+              "value": "{{trainerToken}}",
               "type": "string"
             }
           ]
@@ -1175,8 +1592,8 @@
         "method": "PUT",
         "header": [
           {
-            "value": "application/json",
-            "key": "Content-Type"
+            "key": "Content-Type",
+            "value": "application/json"
           }
         ],
         "body": {
@@ -1223,8 +1640,8 @@
         "method": "PUT",
         "header": [
           {
-            "value": "application/json",
-            "key": "Content-Type"
+            "key": "Content-Type",
+            "value": "application/json"
           }
         ],
         "body": {
@@ -1267,8 +1684,8 @@
         "method": "PUT",
         "header": [
           {
-            "value": "application/json",
-            "key": "Content-Type"
+            "key": "Content-Type",
+            "value": "application/json"
           }
         ],
         "body": {
@@ -1314,16 +1731,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{trainerUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{trainerPassword}}",
+              "key": "token",
+              "value": "{{trainerToken}}",
               "type": "string"
             }
           ]
@@ -1363,16 +1775,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{trainerUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{trainerPassword}}",
+              "key": "token",
+              "value": "{{trainerToken}}",
               "type": "string"
             }
           ]
@@ -1380,8 +1787,8 @@
         "method": "PUT",
         "header": [
           {
-            "value": "application/json",
-            "key": "Content-Type"
+            "key": "Content-Type",
+            "value": "application/json"
           }
         ],
         "body": {
@@ -1449,16 +1856,33 @@
         }
       ],
       "request": {
-        "method": "GET",
-        "header": [],
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"username\":\"{{traineeUsername}}\",\"password\":\"{{traineePassword}}\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
         "url": {
-          "raw": "{{baseUrl}}/trainees/{{traineeUsername}}",
+          "raw": "{{baseUrl}}/auth/login",
           "host": [
             "{{baseUrl}}"
           ],
           "path": [
-            "trainees",
-            "{{traineeUsername}}"
+            "auth",
+            "login"
           ]
         }
       },
@@ -1468,16 +1892,18 @@
       "name": "Assignment - Register trainee",
       "event": [
         {
+          "listen": "test",
           "script": {
+            "type": "text/javascript",
             "exec": [
               "pm.test('201 Created', () => pm.response.to.have.status(201));",
               "const body = pm.response.json();",
               "pm.collectionVariables.set('assigneeUsername', body.username);",
-              "pm.collectionVariables.set('assigneePassword', body.password);"
-            ],
-            "type": "text/javascript"
-          },
-          "listen": "test"
+              "pm.collectionVariables.set('assigneePassword', body.password);",
+              "pm.test('token returned', () => pm.expect(body.token).to.be.a('string'));",
+              "pm.collectionVariables.set('assigneeToken', body.token);"
+            ]
+          }
         }
       ],
       "request": {
@@ -1516,16 +1942,18 @@
       "name": "Assignment - Register second trainer",
       "event": [
         {
+          "listen": "test",
           "script": {
             "type": "text/javascript",
             "exec": [
               "pm.test('201 Created', () => pm.response.to.have.status(201));",
               "const body = pm.response.json();",
               "pm.collectionVariables.set('trainer2Username', body.username);",
-              "pm.collectionVariables.set('trainer2Password', body.password);"
+              "pm.collectionVariables.set('trainer2Password', body.password);",
+              "pm.test('token returned', () => pm.expect(body.token).to.be.a('string'));",
+              "pm.collectionVariables.set('trainer2Token', body.token);"
             ]
-          },
-          "listen": "test"
+          }
         }
       ],
       "request": {
@@ -1581,16 +2009,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -1632,16 +2055,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -1692,16 +2110,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -1709,8 +2122,8 @@
         "method": "PUT",
         "header": [
           {
-            "value": "application/json",
-            "key": "Content-Type"
+            "key": "Content-Type",
+            "value": "application/json"
           }
         ],
         "body": {
@@ -1756,16 +2169,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -1802,16 +2210,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -1848,16 +2251,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{trainer2Username}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{trainer2Password}}",
+              "key": "token",
+              "value": "{{trainer2Token}}",
               "type": "string"
             }
           ]
@@ -1897,16 +2295,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -1957,16 +2350,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -1974,8 +2362,8 @@
         "method": "PUT",
         "header": [
           {
-            "value": "application/json",
-            "key": "Content-Type"
+            "key": "Content-Type",
+            "value": "application/json"
           }
         ],
         "body": {
@@ -2016,16 +2404,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2076,16 +2459,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2135,16 +2513,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{trainer2Username}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{trainer2Password}}",
+              "key": "token",
+              "value": "{{trainer2Token}}",
               "type": "string"
             }
           ]
@@ -2199,16 +2572,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2245,16 +2613,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2262,8 +2625,8 @@
         "method": "POST",
         "header": [
           {
-            "value": "application/json",
-            "key": "Content-Type"
+            "key": "Content-Type",
+            "value": "application/json"
           }
         ],
         "body": {
@@ -2302,16 +2665,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2319,8 +2677,8 @@
         "method": "POST",
         "header": [
           {
-            "value": "application/json",
-            "key": "Content-Type"
+            "key": "Content-Type",
+            "value": "application/json"
           }
         ],
         "body": {
@@ -2360,16 +2718,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2417,16 +2770,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2434,13 +2782,65 @@
         "method": "POST",
         "header": [
           {
-            "value": "application/json",
-            "key": "Content-Type"
+            "key": "Content-Type",
+            "value": "application/json"
           }
         ],
         "body": {
           "mode": "raw",
           "raw": "{\"traineeUsername\":\"{{assigneeUsername}}\",\"trainerUsername\":\"Nobody.Here\",\"trainingName\":\"Ghost Session\",\"trainingDate\":\"2026-08-21\",\"trainingDuration\":30}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/trainings",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "trainings"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Trainings - Logging a training for other people is 403",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('403 Forbidden', () => pm.response.to.have.status(403));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{trainer2Token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"traineeUsername\":\"{{assigneeUsername}}\",\"trainerUsername\":\"{{trainerUsername}}\",\"trainingName\":\"Not mine\",\"trainingDate\":\"2026-08-22\",\"trainingDuration\":30}",
           "options": {
             "raw": {
               "language": "json"
@@ -2487,16 +2887,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2537,16 +2932,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2589,16 +2979,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2641,16 +3026,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2692,16 +3072,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2747,16 +3122,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2795,16 +3165,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{trainerUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{trainerPassword}}",
+              "key": "token",
+              "value": "{{trainerToken}}",
               "type": "string"
             }
           ]
@@ -2840,16 +3205,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{assigneeUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{assigneePassword}}",
+              "key": "token",
+              "value": "{{assigneeToken}}",
               "type": "string"
             }
           ]
@@ -2886,16 +3246,11 @@
       ],
       "request": {
         "auth": {
-          "type": "basic",
-          "basic": [
+          "type": "bearer",
+          "bearer": [
             {
-              "key": "username",
-              "value": "{{trainerUsername}}",
-              "type": "string"
-            },
-            {
-              "key": "password",
-              "value": "{{trainerPassword}}",
+              "key": "token",
+              "value": "{{trainerToken}}",
               "type": "string"
             }
           ]
@@ -2960,6 +3315,7 @@
         {
           "listen": "test",
           "script": {
+            "type": "text/javascript",
             "exec": [
               "pm.test('200 OK', () => pm.response.to.have.status(200));",
               "const text = pm.response.text();",
@@ -2969,9 +3325,9 @@
               "  pm.expect(text).to.include('gymcrm_trainings_added_total');",
               "  pm.expect(text).to.include('gymcrm_training_duration');",
               "});",
+              "pm.test('locked logins counted', () => pm.expect(text).to.match(/gymcrm_logins_total\\{[^}]*outcome=\"locked\"[^}]*\\} [1-9]/));",
               "pm.test('common application tag', () => pm.expect(text).to.include('application=\"gym-crm\"'));"
-            ],
-            "type": "text/javascript"
+            ]
           }
         }
       ],
@@ -2996,16 +3352,11 @@
     }
   ],
   "auth": {
-    "type": "basic",
-    "basic": [
+    "type": "bearer",
+    "bearer": [
       {
-        "key": "username",
-        "value": "{{traineeUsername}}",
-        "type": "string"
-      },
-      {
-        "key": "password",
-        "value": "{{traineePassword}}",
+        "key": "token",
+        "value": "{{traineeToken}}",
         "type": "string"
       }
     ]
@@ -3014,46 +3365,6 @@
     {
       "key": "baseUrl",
       "value": "http://localhost:8080"
-    },
-    {
-      "key": "traineeUsername",
-      "value": ""
-    },
-    {
-      "key": "traineePassword",
-      "value": ""
-    },
-    {
-      "key": "trainerUsername",
-      "value": ""
-    },
-    {
-      "key": "trainerPassword",
-      "value": ""
-    },
-    {
-      "key": "oldTraineePassword",
-      "value": ""
-    },
-    {
-      "key": "assigneeUsername",
-      "value": ""
-    },
-    {
-      "key": "assigneePassword",
-      "value": ""
-    },
-    {
-      "key": "trainer2Username",
-      "value": ""
-    },
-    {
-      "key": "trainer2Password",
-      "value": ""
-    },
-    {
-      "key": "assignedResponse",
-      "value": ""
     }
   ]
 }
