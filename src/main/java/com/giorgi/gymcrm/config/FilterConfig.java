@@ -10,9 +10,6 @@ import org.springframework.core.Ordered;
 @Configuration
 public class FilterConfig {
 
-    // Boot's character encoding filter sits at HIGHEST_PRECEDENCE and has to read the request
-    // first. Ours follow it: the transaction id lands on the MDC before the request log runs,
-    // so every line of a request carries the same id.
     public static final int TRANSACTION_ID_ORDER = Ordered.HIGHEST_PRECEDENCE + 1;
     public static final int REQUEST_LOGGING_ORDER = Ordered.HIGHEST_PRECEDENCE + 2;
 
