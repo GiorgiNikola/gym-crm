@@ -9,7 +9,6 @@ import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,34 +21,21 @@ import static com.giorgi.gymcrm.util.Validations.requireText;
 @Service
 public class TrainingService {
 
-    private TrainingDao trainingDao;
-    private TraineeDao traineeDao;
-    private TrainerDao trainerDao;
-    private TrainingTypeService trainingTypeService;
-    private GymMetrics gymMetrics;
+    private final TrainingDao trainingDao;
+    private final TraineeDao traineeDao;
+    private final TrainerDao trainerDao;
+    private final TrainingTypeService trainingTypeService;
+    private final GymMetrics gymMetrics;
 
-    @Autowired
-    public void setTrainingDao(TrainingDao trainingDao) {
+    public TrainingService(TrainingDao trainingDao,
+                           TraineeDao traineeDao,
+                           TrainerDao trainerDao,
+                           TrainingTypeService trainingTypeService,
+                           GymMetrics gymMetrics) {
         this.trainingDao = trainingDao;
-    }
-
-    @Autowired
-    public void setTraineeDao(TraineeDao traineeDao) {
         this.traineeDao = traineeDao;
-    }
-
-    @Autowired
-    public void setTrainerDao(TrainerDao trainerDao) {
         this.trainerDao = trainerDao;
-    }
-
-    @Autowired
-    public void setTrainingTypeService(TrainingTypeService trainingTypeService) {
         this.trainingTypeService = trainingTypeService;
-    }
-
-    @Autowired
-    public void setGymMetrics(GymMetrics gymMetrics) {
         this.gymMetrics = gymMetrics;
     }
 

@@ -5,7 +5,6 @@ import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.exception.StateConflictException;
 import com.giorgi.gymcrm.model.User;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,16 +16,12 @@ import static com.giorgi.gymcrm.util.Validations.requireText;
 @Service
 public class UserService {
 
-    private UserDao userDao;
-    private PasswordEncoder passwordEncoder;
+    private final UserDao userDao;
+    private final PasswordEncoder passwordEncoder;
 
-    @Autowired
-    public void setUserDao(UserDao userDao) {
+    public UserService(UserDao userDao,
+                       PasswordEncoder passwordEncoder) {
         this.userDao = userDao;
-    }
-
-    @Autowired
-    public void setPasswordEncoder(PasswordEncoder passwordEncoder) {
         this.passwordEncoder = passwordEncoder;
     }
 

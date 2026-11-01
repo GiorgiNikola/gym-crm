@@ -7,7 +7,6 @@ import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,28 +16,18 @@ import static com.giorgi.gymcrm.util.Validations.requireText;
 @Service
 public class TrainerService {
 
-    private TrainerDao trainerDao;
-    private TrainingTypeService trainingTypeService;
-    private GymMetrics gymMetrics;
-    private UserFactory userFactory;
+    private final TrainerDao trainerDao;
+    private final TrainingTypeService trainingTypeService;
+    private final GymMetrics gymMetrics;
+    private final UserFactory userFactory;
 
-    @Autowired
-    public void setTrainerDao(TrainerDao trainerDao) {
+    public TrainerService(TrainerDao trainerDao,
+                          TrainingTypeService trainingTypeService,
+                          GymMetrics gymMetrics,
+                          UserFactory userFactory) {
         this.trainerDao = trainerDao;
-    }
-
-    @Autowired
-    public void setTrainingTypeService(TrainingTypeService trainingTypeService) {
         this.trainingTypeService = trainingTypeService;
-    }
-
-    @Autowired
-    public void setGymMetrics(GymMetrics gymMetrics) {
         this.gymMetrics = gymMetrics;
-    }
-
-    @Autowired
-    public void setUserFactory(UserFactory userFactory) {
         this.userFactory = userFactory;
     }
 

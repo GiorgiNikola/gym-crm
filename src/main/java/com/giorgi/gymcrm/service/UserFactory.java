@@ -2,29 +2,21 @@ package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.model.User;
 import com.giorgi.gymcrm.util.CredentialGenerator;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
 public class UserFactory {
 
-    private UsernameResolver usernameResolver;
-    private CredentialGenerator credentialGenerator;
-    private PasswordEncoder passwordEncoder;
+    private final UsernameResolver usernameResolver;
+    private final CredentialGenerator credentialGenerator;
+    private final PasswordEncoder passwordEncoder;
 
-    @Autowired
-    public void setUsernameResolver(UsernameResolver usernameResolver) {
+    public UserFactory(UsernameResolver usernameResolver,
+                       CredentialGenerator credentialGenerator,
+                       PasswordEncoder passwordEncoder) {
         this.usernameResolver = usernameResolver;
-    }
-
-    @Autowired
-    public void setCredentialGenerator(CredentialGenerator credentialGenerator) {
         this.credentialGenerator = credentialGenerator;
-    }
-
-    @Autowired
-    public void setPasswordEncoder(PasswordEncoder passwordEncoder) {
         this.passwordEncoder = passwordEncoder;
     }
 

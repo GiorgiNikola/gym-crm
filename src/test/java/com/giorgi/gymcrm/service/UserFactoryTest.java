@@ -10,7 +10,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.mockito.Mockito.when;
 
@@ -63,11 +62,11 @@ class UserFactoryTest {
     @DisplayName("a real BCrypt hash matches the generated password and does not contain it")
     void producesAVerifiableBcryptHash() {
         PasswordEncoder bcrypt = new BCryptPasswordEncoder();
-        ReflectionTestUtils.setField(userFactory, "passwordEncoder", bcrypt);
+        UserFactory withRealEncoder = new UserFactory(usernameResolver, credentialGenerator, bcrypt);
         when(usernameResolver.generateUsername("John", "Smith")).thenReturn("John.Smith");
         when(credentialGenerator.generatePassword()).thenReturn(RAW_PASSWORD);
 
-        NewUser created = userFactory.create("John", "Smith");
+        NewUser created = withRealEncoder.create("John", "Smith");
         String stored = created.user().getPassword();
 
         Assertions.assertTrue(stored.startsWith("$2a$"), stored);
@@ -79,12 +78,12 @@ class UserFactoryTest {
     @DisplayName("the same password hashes differently every time, so BCrypt is salting")
     void saltsEveryHash() {
         PasswordEncoder bcrypt = new BCryptPasswordEncoder();
-        ReflectionTestUtils.setField(userFactory, "passwordEncoder", bcrypt);
+        UserFactory withRealEncoder = new UserFactory(usernameResolver, credentialGenerator, bcrypt);
         when(usernameResolver.generateUsername("John", "Smith")).thenReturn("John.Smith");
         when(credentialGenerator.generatePassword()).thenReturn(RAW_PASSWORD);
 
-        String first = userFactory.create("John", "Smith").user().getPassword();
-        String second = userFactory.create("John", "Smith").user().getPassword();
+        String first = withRealEncoder.create("John", "Smith").user().getPassword();
+        String second = withRealEncoder.create("John", "Smith").user().getPassword();
 
         Assertions.assertNotEquals(first, second);
     }
