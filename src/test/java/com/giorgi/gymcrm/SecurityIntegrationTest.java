@@ -1,12 +1,18 @@
 package com.giorgi.gymcrm;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.giorgi.gymcrm.dto.RegistrationResponse;
+import com.giorgi.gymcrm.security.AccessDenialLog;
 import com.giorgi.gymcrm.security.JwtProperties;
 import com.giorgi.gymcrm.security.JwtService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,6 +30,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -198,6 +205,38 @@ class SecurityIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.status").value(403))
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @Test
+    @DisplayName("a denial logs one warning with the method, the path and the caller, and no token")
+    void logsTheDeniedRequestWithoutTheToken() throws Exception {
+        RegistrationResponse john = registerTrainee("Logged", "Denial");
+        RegistrationResponse mary = registerTrainee("Other", "Owner");
+
+        Logger denialLogger = (Logger) LoggerFactory.getLogger(AccessDenialLog.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        denialLogger.addAppender(appender);
+
+        try {
+            mockMvc.perform(get("/trainees/{username}", mary.username())
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + john.token()))
+                    .andExpect(status().isForbidden());
+        } finally {
+            denialLogger.detachAppender(appender);
+            appender.stop();
+        }
+
+        List<ILoggingEvent> warnings = appender.list.stream()
+                .filter(event -> event.getLevel() == Level.WARN)
+                .toList();
+        Assertions.assertEquals(1, warnings.size(), appender.list.toString());
+
+        String line = warnings.get(0).getFormattedMessage();
+        Assertions.assertTrue(line.contains("GET"), line);
+        Assertions.assertTrue(line.contains("/trainees/" + mary.username()), line);
+        Assertions.assertTrue(line.contains(john.username()), line);
+        Assertions.assertFalse(line.contains(john.token()), line);
     }
 
     @Test

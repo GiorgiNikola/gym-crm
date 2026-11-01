@@ -3,6 +3,8 @@ package com.giorgi.gymcrm.controller;
 import com.giorgi.gymcrm.exception.LoginLockedException;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.exception.StateConflictException;
+import com.giorgi.gymcrm.security.AccessDenialLog;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
@@ -37,8 +39,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ProblemDetail handleAccessDenied(AccessDeniedException exception) {
-        log.warn("Denied a request for data that belongs to another user");
+    public ProblemDetail handleAccessDenied(AccessDeniedException exception, HttpServletRequest request) {
+        AccessDenialLog.warnDenied(request);
         return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, "Access to this resource is denied");
     }
 
