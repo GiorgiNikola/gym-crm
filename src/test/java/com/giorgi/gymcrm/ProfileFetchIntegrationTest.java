@@ -1,9 +1,7 @@
 package com.giorgi.gymcrm;
 
 import com.giorgi.gymcrm.facade.GymCrmFacade;
-import com.giorgi.gymcrm.model.Trainee;
-import com.giorgi.gymcrm.model.Trainer;
-import com.giorgi.gymcrm.model.User;
+import com.giorgi.gymcrm.facade.RegisteredProfile;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,9 +17,7 @@ import org.springframework.test.jdbc.JdbcTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import javax.sql.DataSource;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.util.Base64;
 import java.util.Set;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -32,10 +28,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// No @Transactional on purpose. The request has to run on its own transaction so that the
-// response is built after the Hibernate session closes, which is what makes a missing
-// join fetch in the profile queries show up as a failure here. That also relies on
-// spring.jpa.open-in-view being false: with it on, the session would stay open for rendering.
 @SpringBootTest
 @AutoConfigureMockMvc
 class ProfileFetchIntegrationTest {
@@ -49,29 +41,28 @@ class ProfileFetchIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
-    private User trainee;
-    private User firstTrainer;
-    private User secondTrainer;
-    private User thirdTrainer;
-    private User inactiveTrainer;
+    private RegisteredProfile trainee;
+    private RegisteredProfile firstTrainer;
+    private RegisteredProfile secondTrainer;
+    private RegisteredProfile thirdTrainer;
+    private RegisteredProfile inactiveTrainer;
 
     @BeforeEach
     void seedProfiles() {
-        Trainee seeded = gymCrmFacade.createTraineeProfile(
+        trainee = gymCrmFacade.createTraineeProfile(
                 "John", "Smith", LocalDate.of(1998, 5, 14), "123 Main St New York");
-        trainee = seeded.getUser();
 
-        firstTrainer = gymCrmFacade.createTrainerProfile("Adam", "Brown", "FITNESS").getUser();
-        secondTrainer = gymCrmFacade.createTrainerProfile("Zoe", "Adams", "YOGA").getUser();
-        thirdTrainer = gymCrmFacade.createTrainerProfile("Mia", "Clark", "ZUMBA").getUser();
-        inactiveTrainer = gymCrmFacade.createTrainerProfile("Ian", "Dark", "STRETCHING").getUser();
+        firstTrainer = gymCrmFacade.createTrainerProfile("Adam", "Brown", "FITNESS");
+        secondTrainer = gymCrmFacade.createTrainerProfile("Zoe", "Adams", "YOGA");
+        thirdTrainer = gymCrmFacade.createTrainerProfile("Mia", "Clark", "ZUMBA");
+        inactiveTrainer = gymCrmFacade.createTrainerProfile("Ian", "Dark", "STRETCHING");
 
-        gymCrmFacade.changeStatus(inactiveTrainer.getUsername(), inactiveTrainer.getPassword(), false);
+        gymCrmFacade.changeStatus(inactiveTrainer.username(), false);
     }
 
     private void assignFirstTwoTrainers() {
-        gymCrmFacade.updateTraineeTrainers(trainee.getUsername(), trainee.getPassword(),
-                Set.of(firstTrainer.getUsername(), secondTrainer.getUsername()));
+        gymCrmFacade.updateTraineeTrainers(trainee.username(),
+                Set.of(firstTrainer.username(), secondTrainer.username()));
     }
 
     private String trainerList(String... usernames) {
@@ -80,17 +71,14 @@ class ProfileFetchIntegrationTest {
                 + "\"]}";
     }
 
-    // These rows are committed, so they have to go before the next test or the next test class.
-    // training_types is left alone: the V2 migration seeds it as reference data.
     @AfterEach
     void clearSeededRows() {
         JdbcTestUtils.deleteFromTables(new JdbcTemplate(dataSource),
                 "trainee2trainer", "trainings", "trainees", "trainers", "users");
     }
 
-    private String basic(User user) {
-        return "Basic " + Base64.getEncoder()
-                .encodeToString((user.getUsername() + ":" + user.getPassword()).getBytes(StandardCharsets.UTF_8));
+    private String bearer(RegisteredProfile profile) {
+        return "Bearer " + profile.token();
     }
 
     @Test
@@ -98,16 +86,16 @@ class ProfileFetchIntegrationTest {
     void servesTraineeWithTrainers() throws Exception {
         assignFirstTwoTrainers();
 
-        mockMvc.perform(get("/trainees/{username}", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+        mockMvc.perform(get("/trainees/{username}", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.username").value(trainee.getUsername()))
+                .andExpect(jsonPath("$.username").value(trainee.username()))
                 .andExpect(jsonPath("$.address").value("123 Main St New York"))
                 .andExpect(jsonPath("$.trainers.length()").value(2))
-                .andExpect(jsonPath("$.trainers[0].username").value(firstTrainer.getUsername()))
-                .andExpect(jsonPath("$.trainers[0].firstName").value(firstTrainer.getFirstName()))
+                .andExpect(jsonPath("$.trainers[0].username").value(firstTrainer.username()))
+                .andExpect(jsonPath("$.trainers[0].firstName").value("Adam"))
                 .andExpect(jsonPath("$.trainers[0].specialization").value("FITNESS"))
-                .andExpect(jsonPath("$.trainers[1].username").value(secondTrainer.getUsername()))
+                .andExpect(jsonPath("$.trainers[1].username").value(secondTrainer.username()))
                 .andExpect(jsonPath("$.trainers[1].specialization").value("YOGA"));
     }
 
@@ -116,13 +104,13 @@ class ProfileFetchIntegrationTest {
     void servesTrainerWithTrainees() throws Exception {
         assignFirstTwoTrainers();
 
-        mockMvc.perform(get("/trainers/{username}", firstTrainer.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(firstTrainer)))
+        mockMvc.perform(get("/trainers/{username}", firstTrainer.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(firstTrainer)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.specialization").value("FITNESS"))
                 .andExpect(jsonPath("$.trainees.length()").value(1))
-                .andExpect(jsonPath("$.trainees[0].username").value(trainee.getUsername()))
-                .andExpect(jsonPath("$.trainees[0].firstName").value(trainee.getFirstName()));
+                .andExpect(jsonPath("$.trainees[0].username").value(trainee.username()))
+                .andExpect(jsonPath("$.trainees[0].firstName").value("John"));
     }
 
     @Test
@@ -130,8 +118,8 @@ class ProfileFetchIntegrationTest {
     void keepsTrainersAfterUpdate() throws Exception {
         assignFirstTwoTrainers();
 
-        mockMvc.perform(put("/trainees/{username}", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+        mockMvc.perform(put("/trainees/{username}", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"firstName":"Johnny","lastName":"Smithson","address":"456 Park Avenue Boston",
@@ -147,23 +135,23 @@ class ProfileFetchIntegrationTest {
     void keepsTraineesAfterUpdate() throws Exception {
         assignFirstTwoTrainers();
 
-        mockMvc.perform(put("/trainers/{username}", firstTrainer.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(firstTrainer))
+        mockMvc.perform(put("/trainers/{username}", firstTrainer.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(firstTrainer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"firstName\":\"Adamo\",\"lastName\":\"Brown\",\"isActive\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.firstName").value("Adamo"))
                 .andExpect(jsonPath("$.specialization").value("FITNESS"))
                 .andExpect(jsonPath("$.trainees.length()").value(1))
-                .andExpect(jsonPath("$.trainees[0].username").value(trainee.getUsername()));
+                .andExpect(jsonPath("$.trainees[0].username").value(trainee.username()));
     }
 
     private void logTraining(String name, LocalDate date) throws Exception {
         mockMvc.perform(post("/trainings")
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"traineeUsername\":\"" + trainee.getUsername() + "\""
-                                + ",\"trainerUsername\":\"" + firstTrainer.getUsername() + "\""
+                        .content("{\"traineeUsername\":\"" + trainee.username() + "\""
+                                + ",\"trainerUsername\":\"" + firstTrainer.username() + "\""
                                 + ",\"trainingName\":\"" + name + "\""
                                 + ",\"trainingDate\":\"" + date + "\""
                                 + ",\"trainingDuration\":60}"))
@@ -176,15 +164,15 @@ class ProfileFetchIntegrationTest {
         logTraining("Evening strength", LocalDate.of(2026, 8, 15));
         logTraining("Morning strength", LocalDate.of(2026, 8, 1));
 
-        mockMvc.perform(get("/trainees/{username}/trainings", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+        mockMvc.perform(get("/trainees/{username}/trainings", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].trainingName").value("Morning strength"))
                 .andExpect(jsonPath("$[0].trainingDate").value("2026-08-01"))
                 .andExpect(jsonPath("$[0].trainingType").value("FITNESS"))
                 .andExpect(jsonPath("$[0].trainingDuration").value(60))
-                .andExpect(jsonPath("$[0].trainerUsername").value(firstTrainer.getUsername()))
+                .andExpect(jsonPath("$[0].trainerUsername").value(firstTrainer.username()))
                 .andExpect(jsonPath("$[0].trainerName").value("Adam Brown"))
                 .andExpect(jsonPath("$[1].trainingName").value("Evening strength"));
     }
@@ -195,15 +183,15 @@ class ProfileFetchIntegrationTest {
         logTraining("Morning strength", LocalDate.of(2026, 8, 1));
         logTraining("Evening strength", LocalDate.of(2026, 8, 15));
 
-        mockMvc.perform(get("/trainees/{username}/trainings", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+        mockMvc.perform(get("/trainees/{username}/trainings", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee))
                         .param("from", "2026-08-10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].trainingName").value("Evening strength"));
 
-        mockMvc.perform(get("/trainees/{username}/trainings", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+        mockMvc.perform(get("/trainees/{username}/trainings", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee))
                         .param("trainerName", "Brown"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2));
@@ -214,11 +202,11 @@ class ProfileFetchIntegrationTest {
     void listsTrainingsForTheTrainer() throws Exception {
         logTraining("Morning strength", LocalDate.of(2026, 8, 1));
 
-        mockMvc.perform(get("/trainers/{username}/trainings", firstTrainer.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(firstTrainer)))
+        mockMvc.perform(get("/trainers/{username}/trainings", firstTrainer.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(firstTrainer)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].traineeUsername").value(trainee.getUsername()))
+                .andExpect(jsonPath("$[0].traineeUsername").value(trainee.username()))
                 .andExpect(jsonPath("$[0].traineeName").value("John Smith"))
                 .andExpect(jsonPath("$[0].trainingType").value("FITNESS"));
     }
@@ -228,12 +216,12 @@ class ProfileFetchIntegrationTest {
     void cascadesTrainingsWhenTheTraineeGoes() throws Exception {
         logTraining("Morning strength", LocalDate.of(2026, 8, 1));
 
-        mockMvc.perform(delete("/trainees/{username}", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+        mockMvc.perform(delete("/trainees/{username}", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee)))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/trainers/{username}/trainings", firstTrainer.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(firstTrainer)))
+        mockMvc.perform(get("/trainers/{username}/trainings", firstTrainer.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(firstTrainer)))
                 .andExpect(status().isOk())
                 .andExpect(content().string("[]"));
     }
@@ -241,31 +229,31 @@ class ProfileFetchIntegrationTest {
     @Test
     @DisplayName("the unassigned list holds every active trainer and skips the inactive one")
     void listsActiveUnassignedTrainers() throws Exception {
-        String body = mockMvc.perform(get("/trainees/{username}/unassigned-trainers", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+        String body = mockMvc.perform(get("/trainees/{username}/unassigned-trainers", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(3))
-                .andExpect(jsonPath("$[0].username").value(firstTrainer.getUsername()))
+                .andExpect(jsonPath("$[0].username").value(firstTrainer.username()))
                 .andExpect(jsonPath("$[0].specialization").value("FITNESS"))
-                .andExpect(jsonPath("$[1].username").value(thirdTrainer.getUsername()))
-                .andExpect(jsonPath("$[2].username").value(secondTrainer.getUsername()))
+                .andExpect(jsonPath("$[1].username").value(thirdTrainer.username()))
+                .andExpect(jsonPath("$[2].username").value(secondTrainer.username()))
                 .andReturn().getResponse().getContentAsString();
 
-        Assertions.assertFalse(body.contains(inactiveTrainer.getUsername()), body);
+        Assertions.assertFalse(body.contains(inactiveTrainer.username()), body);
     }
 
     @Test
     @DisplayName("assigning two trainers comes back as those two, sorted")
     void assignsTwoTrainers() throws Exception {
-        mockMvc.perform(put("/trainees/{username}/trainers", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+        mockMvc.perform(put("/trainees/{username}/trainers", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(trainerList(secondTrainer.getUsername(), firstTrainer.getUsername())))
+                        .content(trainerList(secondTrainer.username(), firstTrainer.username())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].username").value(firstTrainer.getUsername()))
+                .andExpect(jsonPath("$[0].username").value(firstTrainer.username()))
                 .andExpect(jsonPath("$[0].specialization").value("FITNESS"))
-                .andExpect(jsonPath("$[1].username").value(secondTrainer.getUsername()));
+                .andExpect(jsonPath("$[1].username").value(secondTrainer.username()));
     }
 
     @Test
@@ -273,44 +261,44 @@ class ProfileFetchIntegrationTest {
     void dropsAssignedTrainersFromTheUnassignedList() throws Exception {
         assignFirstTwoTrainers();
 
-        mockMvc.perform(get("/trainees/{username}/unassigned-trainers", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+        mockMvc.perform(get("/trainees/{username}/unassigned-trainers", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].username").value(thirdTrainer.getUsername()));
+                .andExpect(jsonPath("$[0].username").value(thirdTrainer.username()));
     }
 
     @Test
     @DisplayName("the profile shows the trainers assigned over http")
     void showsAssignedTrainersOnTheProfile() throws Exception {
-        mockMvc.perform(put("/trainees/{username}/trainers", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+        mockMvc.perform(put("/trainees/{username}/trainers", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(trainerList(firstTrainer.getUsername(), secondTrainer.getUsername())))
+                        .content(trainerList(firstTrainer.username(), secondTrainer.username())))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/trainees/{username}", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+        mockMvc.perform(get("/trainees/{username}", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.trainers.length()").value(2))
-                .andExpect(jsonPath("$.trainers[0].username").value(firstTrainer.getUsername()))
-                .andExpect(jsonPath("$.trainers[1].username").value(secondTrainer.getUsername()));
+                .andExpect(jsonPath("$.trainers[0].username").value(firstTrainer.username()))
+                .andExpect(jsonPath("$.trainers[1].username").value(secondTrainer.username()));
     }
 
     @Test
     @DisplayName("sending the same assignment twice gives the same answer")
     void repeatsTheSameAssignment() throws Exception {
-        String body = trainerList(firstTrainer.getUsername(), secondTrainer.getUsername());
+        String body = trainerList(firstTrainer.username(), secondTrainer.username());
 
-        String first = mockMvc.perform(put("/trainees/{username}/trainers", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+        String first = mockMvc.perform(put("/trainees/{username}/trainers", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 
-        String second = mockMvc.perform(put("/trainees/{username}/trainers", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+        String second = mockMvc.perform(put("/trainees/{username}/trainers", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
@@ -324,15 +312,15 @@ class ProfileFetchIntegrationTest {
     void clearsTrainersWithAnEmptyList() throws Exception {
         assignFirstTwoTrainers();
 
-        mockMvc.perform(put("/trainees/{username}/trainers", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee))
+        mockMvc.perform(put("/trainees/{username}/trainers", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"trainerUsernames\":[]}"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("[]"));
 
-        mockMvc.perform(get("/trainees/{username}", trainee.getUsername())
-                        .header(HttpHeaders.AUTHORIZATION, basic(trainee)))
+        mockMvc.perform(get("/trainees/{username}", trainee.username())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(trainee)))
                 .andExpect(jsonPath("$.trainers.length()").value(0));
     }
 }

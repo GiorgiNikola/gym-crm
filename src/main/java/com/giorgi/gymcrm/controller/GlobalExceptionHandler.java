@@ -1,7 +1,6 @@
 package com.giorgi.gymcrm.controller;
 
-import com.giorgi.gymcrm.exception.AuthenticationException;
-import com.giorgi.gymcrm.exception.ForbiddenOperationException;
+import com.giorgi.gymcrm.exception.LoginLockedException;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.exception.StateConflictException;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -25,23 +26,27 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
-    private static final String BASIC_CHALLENGE = "Basic realm=\"gym-crm\"";
-
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
     @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<ProblemDetail> handleAuthentication(AuthenticationException exception) {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .header(HttpHeaders.WWW_AUTHENTICATE, BASIC_CHALLENGE)
-                .body(ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, exception.getMessage()));
+    public ProblemDetail handleAuthentication(AuthenticationException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, "Invalid username or password");
     }
 
-    @ExceptionHandler(ForbiddenOperationException.class)
-    public ProblemDetail handleForbiddenOperation(ForbiddenOperationException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, exception.getMessage());
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail handleAccessDenied(AccessDeniedException exception) {
+        log.warn("Denied a request for data that belongs to another user");
+        return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, "Access to this resource is denied");
+    }
+
+    @ExceptionHandler(LoginLockedException.class)
+    public ResponseEntity<ProblemDetail> handleLoginLocked(LoginLockedException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(exception.retryAfterSeconds()))
+                .body(ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, exception.getMessage()));
     }
 
     @ExceptionHandler(ProfileNotFoundException.class)
@@ -70,13 +75,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                                   HttpHeaders headers,
                                                                   HttpStatusCode status,
                                                                   WebRequest request) {
+        ProblemDetail body = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
+        body.setProperty("errors", messagesByField(exception));
+        return handleExceptionInternal(exception, body, headers, HttpStatus.BAD_REQUEST, request);
+    }
+
+    private static Map<String, String> messagesByField(MethodArgumentNotValidException exception) {
         Map<String, String> errors = new LinkedHashMap<>();
         for (FieldError fieldError : exception.getBindingResult().getFieldErrors()) {
             errors.put(fieldError.getField(), fieldError.getDefaultMessage());
         }
-
-        ProblemDetail body = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
-        body.setProperty("errors", errors);
-        return handleExceptionInternal(exception, body, headers, HttpStatus.BAD_REQUEST, request);
+        return errors;
     }
 }

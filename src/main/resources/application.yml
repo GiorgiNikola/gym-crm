@@ -17,7 +17,8 @@ spring:
       # no static content; an unknown path stays a "No endpoint" 404 problem
       add-mappings: false
 
-# Actuator is not behind Basic auth: these are not controllers taking Credentials.
+# The actuator stays public: it exposes no personal data, and a monitoring scrape has no
+# token to present.
 management:
   endpoint:
     health:
@@ -29,3 +30,10 @@ management:
 gymcrm:
   health:
     db-latency-threshold-ms: 500
+  jwt:
+    # The signing secret has no default here on purpose: every profile says where its own
+    # comes from, so a deployed one cannot silently inherit a development value.
+    ttl: 1h
+  security:
+    max-login-attempts: 3
+    lock-duration: 5m

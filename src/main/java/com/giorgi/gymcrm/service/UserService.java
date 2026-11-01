@@ -6,6 +6,8 @@ import com.giorgi.gymcrm.exception.StateConflictException;
 import com.giorgi.gymcrm.model.User;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,7 +18,7 @@ import static com.giorgi.gymcrm.util.Validations.requireText;
 public class UserService {
 
     private UserDao userDao;
-    private AuthenticationService authenticationService;
+    private PasswordEncoder passwordEncoder;
 
     @Autowired
     public void setUserDao(UserDao userDao) {
@@ -24,18 +26,12 @@ public class UserService {
     }
 
     @Autowired
-    public void setAuthenticationService(AuthenticationService authenticationService) {
-        this.authenticationService = authenticationService;
-    }
-
-    @Transactional(readOnly = true)
-    public void login(String username, String password) {
-        authenticationService.authenticate(username, password);
+    public void setPasswordEncoder(PasswordEncoder passwordEncoder) {
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Transactional
-    public void changeStatus(String username, String password, boolean active) {
-        authenticationService.authenticate(username, password);
+    public void changeStatus(String username, boolean active) {
         User user = findOrThrow(username);
 
         if (user.isActive() == active) {
@@ -43,17 +39,21 @@ public class UserService {
         }
 
         user.setActive(active);
-        log.info("User {} is {}", username,(active ? "activated" : "deactivated"));
+        log.info("User {} is {}", username, active ? "activated" : "deactivated");
     }
 
     @Transactional
-    public void changePassword(String username, String password, String newPassword) {
-        authenticationService.authenticate(username, password);
+    public void changePassword(String username, String oldPassword, String newPassword) {
         requireText(newPassword, "New password");
 
         User user = findOrThrow(username);
-        user.setPassword(newPassword);
-        log.info("Password changed for User: {}", username);
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            log.warn("Rejected a password change for user {}: the old password did not match", username);
+            throw new BadCredentialsException("The old password is not correct");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        log.info("Password changed for user: {}", username);
     }
 
     private User findOrThrow(String username) {

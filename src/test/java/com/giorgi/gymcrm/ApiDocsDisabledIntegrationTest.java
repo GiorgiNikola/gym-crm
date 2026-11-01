@@ -10,8 +10,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// The two flags the stg and prod profiles set, without activating those profiles: they have no
-// default DB_URL and would not start here.
 @SpringBootTest(properties = {
         "springdoc.api-docs.enabled=false",
         "springdoc.swagger-ui.enabled=false"

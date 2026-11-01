@@ -34,3 +34,13 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+gymcrm:
+  jwt:
+    # No default: RequiredJwtSecretProcessor stops the startup when JWT_SECRET is missing,
+    # the same way it does for DB_URL.
+    secret: ${JWT_SECRET}
+  cors:
+    # No origins listed, so no browser on another origin gets a response. The front end
+    # origins are added per environment when there are any.
+    allowed-origins: []

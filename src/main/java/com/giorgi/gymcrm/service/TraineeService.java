@@ -7,7 +7,6 @@ import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.User;
-import com.giorgi.gymcrm.util.CredentialGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -27,10 +26,8 @@ public class TraineeService {
 
     private TraineeDao traineeDao;
     private TrainerDao trainerDao;
-    private AuthenticationService authenticationService;
     private GymMetrics gymMetrics;
-    private UsernameResolver usernameResolver;
-    private CredentialGenerator credentialGenerator;
+    private UserFactory userFactory;
 
     @Autowired
     public void setTraineeDao(TraineeDao traineeDao) {
@@ -43,61 +40,42 @@ public class TraineeService {
     }
 
     @Autowired
-    public void setAuthenticationService(AuthenticationService authenticationService) {
-        this.authenticationService = authenticationService;
-    }
-
-    @Autowired
     public void setGymMetrics(GymMetrics gymMetrics) {
         this.gymMetrics = gymMetrics;
     }
 
     @Autowired
-    public void setUsernameResolver(UsernameResolver usernameResolver) {
-        this.usernameResolver = usernameResolver;
-    }
-
-    @Autowired
-    public void setCredentialGenerator(CredentialGenerator credentialGenerator) {
-        this.credentialGenerator = credentialGenerator;
+    public void setUserFactory(UserFactory userFactory) {
+        this.userFactory = userFactory;
     }
 
     @Transactional
-    public Trainee createProfile(String firstName, String lastName, LocalDate dateOfBirth, String address) {
+    public NewUser createProfile(String firstName, String lastName, LocalDate dateOfBirth, String address) {
         requireText(firstName, "First name");
         requireText(lastName, "Last name");
 
-        User user = User.builder()
-                .firstName(firstName)
-                .lastName(lastName)
-                .username(usernameResolver.generateUsername(firstName, lastName))
-                .password(credentialGenerator.generatePassword())
-                .isActive(true)
-                .build();
-
+        NewUser created = userFactory.create(firstName, lastName);
         Trainee trainee = Trainee.builder()
-                .user(user)
+                .user(created.user())
                 .dateOfBirth(dateOfBirth)
                 .address(address)
                 .build();
 
         traineeDao.save(trainee);
         gymMetrics.traineeRegistered();
-        log.info("Created trainee profile with username: {}", user.getUsername());
-        return trainee;
+        log.info("Created trainee profile with username: {}", created.user().getUsername());
+        return created;
     }
 
     @Transactional(readOnly = true)
-    public Trainee selectByUsername(String username, String password) {
-        authenticationService.authenticate(username, password);
+    public Trainee selectByUsername(String username) {
         return findProfileOrThrow(username);
     }
 
     @Transactional
-    public Trainee updateProfile(String username, String password,
+    public Trainee updateProfile(String username,
                                  String firstName, String lastName,
                                  LocalDate dateOfBirth, String address, boolean isActive) {
-        authenticationService.authenticate(username, password);
         requireText(firstName, "First name");
         requireText(lastName, "Last name");
 
@@ -119,17 +97,14 @@ public class TraineeService {
     }
 
     @Transactional
-    public void deleteByUsername(String username, String password) {
-        authenticationService.authenticate(username, password);
-
+    public void deleteByUsername(String username) {
         Trainee trainee = findOrThrow(username);
         traineeDao.delete(trainee);
         log.info("Deleted trainee profile: {}", username);
     }
 
     @Transactional
-    public Trainee updateTrainers(String username, String password, Set<String> trainerUsernames) {
-        authenticationService.authenticate(username, password);
+    public Trainee updateTrainers(String username, Set<String> trainerUsernames) {
         if (trainerUsernames == null) {
             throw new IllegalArgumentException("Trainer usernames must not be null");
         }
@@ -153,8 +128,7 @@ public class TraineeService {
     }
 
     @Transactional(readOnly = true)
-    public List<Trainer> findUnassignedTrainers(String username, String password) {
-        authenticationService.authenticate(username, password);
+    public List<Trainer> findUnassignedTrainers(String username) {
         findOrThrow(username);
         return trainerDao.findNotAssignedToTrainee(username);
     }

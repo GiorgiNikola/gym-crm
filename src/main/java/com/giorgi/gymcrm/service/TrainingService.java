@@ -26,7 +26,6 @@ public class TrainingService {
     private TraineeDao traineeDao;
     private TrainerDao trainerDao;
     private TrainingTypeService trainingTypeService;
-    private AuthenticationService authenticationService;
     private GymMetrics gymMetrics;
 
     @Autowired
@@ -50,20 +49,13 @@ public class TrainingService {
     }
 
     @Autowired
-    public void setAuthenticationService(AuthenticationService authenticationService) {
-        this.authenticationService = authenticationService;
-    }
-
-    @Autowired
     public void setGymMetrics(GymMetrics gymMetrics) {
         this.gymMetrics = gymMetrics;
     }
 
     @Transactional
-    public Training addTraining(String username, String password,
-                                String traineeUsername, String trainerUsername,
+    public Training addTraining(String traineeUsername, String trainerUsername,
                                 String name, LocalDate date, Long duration) {
-        authenticationService.authenticate(username, password);
         requireText(traineeUsername, "Trainee username");
         requireText(trainerUsername, "Trainer username");
         requireText(name, "Training name");
@@ -96,10 +88,9 @@ public class TrainingService {
     }
 
     @Transactional(readOnly = true)
-    public List<Training> getTraineeTrainings(String username, String password,
+    public List<Training> getTraineeTrainings(String username,
                                               LocalDate fromDate, LocalDate toDate,
                                               String trainerName, String typeName) {
-        authenticationService.authenticate(username, password);
         requireValidRange(fromDate, toDate);
         if (typeName != null && !typeName.isBlank()) {
             trainingTypeService.requireByName(typeName);
@@ -109,10 +100,9 @@ public class TrainingService {
     }
 
     @Transactional(readOnly = true)
-    public List<Training> getTrainerTrainings(String username, String password,
+    public List<Training> getTrainerTrainings(String username,
                                               LocalDate fromDate, LocalDate toDate,
                                               String traineeName) {
-        authenticationService.authenticate(username, password);
         requireValidRange(fromDate, toDate);
 
         return trainingDao.findTrainerTrainings(username, fromDate, toDate, traineeName);
