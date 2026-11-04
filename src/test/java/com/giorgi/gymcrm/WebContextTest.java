@@ -4,8 +4,6 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.giorgi.gymcrm.config.RootConfig;
-import com.giorgi.gymcrm.config.WebConfig;
 import com.giorgi.gymcrm.dto.RegistrationResponse;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
 import com.giorgi.gymcrm.model.Trainee;
@@ -15,19 +13,14 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.ContextHierarchy;
-import org.springframework.test.context.junit.jupiter.SpringExtension;
-import org.springframework.test.context.web.WebAppConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
@@ -43,31 +36,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@ExtendWith(SpringExtension.class)
-@WebAppConfiguration
-@ContextHierarchy({
-        @ContextConfiguration(classes = RootConfig.class),
-        @ContextConfiguration(classes = WebConfig.class)
-})
+// MockMvc comes from Boot with the registered filters in front of it, so the transaction id
+// and the request log run here exactly as they do in the server.
+@SpringBootTest
+@AutoConfigureMockMvc
 @Transactional
 class WebContextTest {
 
     @Autowired
-    private WebApplicationContext webApplicationContext;
-
-    @Autowired
     private GymCrmFacade gymCrmFacade;
 
+    @Autowired
     private MockMvc mockMvc;
+
     private String username;
     private String password;
 
     @BeforeEach
-    void buildMockMvcAndSeedTrainee() {
-        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
-                .addFilters(new TransactionIdFilter(), new RequestLoggingFilter())
-                .build();
-
+    void seedTrainee() {
         Trainee trainee = gymCrmFacade.createTraineeProfile(
                 "John", "Smith", LocalDate.of(1998, 5, 14), "123 Main St New York");
         username = trainee.getUser().getUsername();

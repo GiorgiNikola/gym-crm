@@ -1,0 +1,31 @@
+spring:
+  profiles:
+    # running with no --spring.profiles.active lands on local
+    default: local
+  jpa:
+    hibernate:
+      naming:
+        # the names the hand written config produced: Hibernate's own implicit strategy
+        # plus camelCase to snake_case for the physical names
+        implicit-strategy: org.hibernate.boot.model.naming.ImplicitNamingStrategyJpaCompliantImpl
+        physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+    # the session closes with the service transaction, as before; a lazy association
+    # the queries forgot to fetch fails instead of being loaded during rendering
+    open-in-view: false
+  web:
+    resources:
+      # no static content; an unknown path stays a "No endpoint" 404 problem
+      add-mappings: false
+
+# Actuator is not behind Basic auth: these are not controllers taking Credentials.
+management:
+  endpoint:
+    health:
+      show-components: always
+  metrics:
+    tags:
+      application: gym-crm
+
+gymcrm:
+  health:
+    db-latency-threshold-ms: 500

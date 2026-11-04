@@ -1,0 +1,34 @@
+# Replaces src/main/resources/application.yml on the test classpath, so every setting the
+# tests rely on is repeated here. No spring.profiles.default: the profile YAMLs point at
+# PostgreSQL and must stay out of the test run.
+spring:
+  datasource:
+    url: jdbc:h2:mem:gymcrm;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      # Flyway builds the schema here too, so every test run also checks the migrations
+      # against the entities
+      ddl-auto: validate
+      naming:
+        implicit-strategy: org.hibernate.boot.model.naming.ImplicitNamingStrategyJpaCompliantImpl
+        physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+    open-in-view: false
+  web:
+    resources:
+      add-mappings: false
+
+# the integration test reads /actuator/health and /actuator/prometheus
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-components: always
+      show-details: always
+  metrics:
+    tags:
+      application: gym-crm

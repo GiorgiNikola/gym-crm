@@ -4,6 +4,7 @@ import com.giorgi.gymcrm.dao.TraineeDao;
 import com.giorgi.gymcrm.dao.TrainerDao;
 import com.giorgi.gymcrm.exception.AuthenticationException;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
+import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.User;
@@ -48,6 +49,9 @@ class TraineeServiceTest {
 
     @Mock
     private CredentialGenerator credentialGenerator;
+
+    @Mock
+    private GymMetrics gymMetrics;
 
     @InjectMocks
     private TraineeService traineeService;
@@ -300,5 +304,25 @@ class TraineeServiceTest {
         when(trainerDao.findNotAssignedToTrainee("John.Smith")).thenReturn(unassigned);
 
         Assertions.assertSame(unassigned, traineeService.findUnassignedTrainers("John.Smith", PASSWORD));
+    }
+
+    @Test
+    @DisplayName("a saved trainee is counted as a registration")
+    void countsTraineeRegistration() {
+        when(usernameResolver.generateUsername("John", "Smith")).thenReturn("John.Smith");
+        when(credentialGenerator.generatePassword()).thenReturn(PASSWORD);
+
+        traineeService.createProfile("John", "Smith", DATE_OF_BIRTH, ADDRESS);
+
+        verify(gymMetrics).traineeRegistered();
+    }
+
+    @Test
+    @DisplayName("a rejected registration is not counted")
+    void doesNotCountRejectedRegistration() {
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> traineeService.createProfile("  ", "Smith", DATE_OF_BIRTH, ADDRESS));
+
+        verifyNoInteractions(gymMetrics);
     }
 }

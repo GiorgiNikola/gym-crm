@@ -1,0 +1,10 @@
+<configuration>
+
+    <!-- Console only. Levels live in the profile YAMLs under logging.level. -->
+    <include resource="logback-common.xml"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>

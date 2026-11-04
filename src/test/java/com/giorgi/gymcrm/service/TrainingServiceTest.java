@@ -4,6 +4,7 @@ import com.giorgi.gymcrm.dao.TraineeDao;
 import com.giorgi.gymcrm.dao.TrainerDao;
 import com.giorgi.gymcrm.dao.TrainingDao;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
+import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
@@ -48,6 +49,9 @@ class TrainingServiceTest {
 
     @Mock
     private AuthenticationService authenticationService;
+
+    @Mock
+    private GymMetrics gymMetrics;
 
     @InjectMocks
     private TrainingService trainingService;
@@ -230,5 +234,27 @@ class TrainingServiceTest {
         Assertions.assertEquals("Unknown training type: PILATES. Valid values: FITNESS, YOGA",
                 thrown.getMessage());
         verifyNoInteractions(trainingDao);
+    }
+
+    @Test
+    @DisplayName("a saved training is counted with its duration")
+    void countsAddedTraining() {
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john()));
+        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah(trainingType(2L))));
+
+        trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
+                "Morning Yoga", DATE, 60L);
+
+        verify(gymMetrics).trainingAdded(60L);
+    }
+
+    @Test
+    @DisplayName("a rejected training is not counted")
+    void doesNotCountRejectedTraining() {
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
+                        "Morning Yoga", DATE, 0L));
+
+        verifyNoInteractions(gymMetrics);
     }
 }

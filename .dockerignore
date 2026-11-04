@@ -1,0 +1,25 @@
+# Build output: the image builds its own inside the builder stage.
+target/
+*.jar
+
+# Version control and IDE noise.
+.git/
+.gitignore
+.idea/
+*.iml
+.vscode/
+
+# Not needed to build or run the app.
+postman/
+README.md
+*.md
+logs/
+*.log
+Dockerfile
+.dockerignore
+
+# Maven wrapper: the builder stage uses the mvn that ships with the base image,
+# because the wrapper scripts carry Windows line endings.
+mvnw
+mvnw.cmd
+.mvn/

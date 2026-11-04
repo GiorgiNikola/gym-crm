@@ -2915,6 +2915,84 @@
         }
       },
       "response": []
+    },
+    {
+      "name": "Actuator - Health with custom indicators",
+      "event": [
+        {
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('overall UP', () => pm.expect(body.status).to.equal('UP'));",
+              "pm.test('both custom indicators present and UP', () => {",
+              "  pm.expect(body.components.trainingTypes.status).to.equal('UP');",
+              "  pm.expect(body.components.databaseLatency.status).to.equal('UP');",
+              "});"
+            ]
+          },
+          "listen": "test"
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/actuator/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "actuator",
+            "health"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Actuator - Prometheus exposes custom metrics",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const text = pm.response.text();",
+              "pm.test('registration counter for trainees', () => pm.expect(text).to.match(/gymcrm_registrations_total\\{[^}]*role=\"trainee\"[^}]*\\} [1-9]/));",
+              "pm.test('successful logins counted', () => pm.expect(text).to.match(/gymcrm_logins_total\\{[^}]*outcome=\"success\"[^}]*\\} [1-9]/));",
+              "pm.test('trainings counter and duration summary present', () => {",
+              "  pm.expect(text).to.include('gymcrm_trainings_added_total');",
+              "  pm.expect(text).to.include('gymcrm_training_duration');",
+              "});",
+              "pm.test('common application tag', () => pm.expect(text).to.include('application=\"gym-crm\"'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/actuator/prometheus",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "actuator",
+            "prometheus"
+          ]
+        }
+      },
+      "response": []
     }
   ],
   "auth": {
