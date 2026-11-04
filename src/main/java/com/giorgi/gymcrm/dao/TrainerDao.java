@@ -10,6 +10,7 @@ public interface TrainerDao {
     Trainer save(Trainer trainer);
     Trainer update(Trainer trainer);
     Optional<Trainer> findByUsername(String username);
+    Optional<Trainer> findProfileByUsername(String username);
     List<Trainer> findAllByUsernames(Collection<String> usernames);
     List<Trainer> findNotAssignedToTrainee(String traineeUsername);
 }

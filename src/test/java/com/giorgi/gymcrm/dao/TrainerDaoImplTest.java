@@ -1,6 +1,6 @@
 package com.giorgi.gymcrm.dao;
 
-import com.giorgi.gymcrm.GymCrmApplication;
+import com.giorgi.gymcrm.config.RootConfig;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.TrainingType;
@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Optional;
 
 @ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = GymCrmApplication.class)
+@ContextConfiguration(classes = RootConfig.class)
 @Transactional
 class TrainerDaoImplTest {
 
@@ -117,6 +117,31 @@ class TrainerDaoImplTest {
     }
 
     @Test
+    @DisplayName("findAllByUsernames returns nothing for an empty or missing request")
+    void findAllByEmptyUsernamesReturnsNothing() {
+        trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));
+        entityManager.flush();
+
+        Assertions.assertTrue(trainerDao.findAllByUsernames(List.of()).isEmpty());
+        Assertions.assertTrue(trainerDao.findAllByUsernames(null).isEmpty());
+    }
+
+    @Test
+    @DisplayName("findNotAssignedToTrainee sorts the trainers by username")
+    void findNotAssignedSortsByUsername() {
+        trainerDao.save(trainer("Zoe", "Adams", "YOGA", true));
+        trainerDao.save(trainer("Mia", "Clark", "ZUMBA", true));
+        trainerDao.save(trainer("Adam", "Brown", "FITNESS", true));
+        entityManager.persist(trainee("John", "Smith"));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Trainer> unassigned = trainerDao.findNotAssignedToTrainee("John.Smith");
+
+        Assertions.assertEquals(List.of("Adam.Brown", "Mia.Clark", "Zoe.Adams"), usernames(unassigned));
+    }
+
+    @Test
     @DisplayName("findNotAssignedToTrainee leaves out trainers the trainee already has")
     void findNotAssignedExcludesAssignedTrainers() {
         Trainer sarah = trainerDao.save(trainer("Sarah", "Miller", "YOGA", true));
@@ -187,5 +212,45 @@ class TrainerDaoImplTest {
         entityManager.flush();
 
         Assertions.assertTrue(trainerDao.findAllByUsernames(List.of()).isEmpty());
+    }
+
+    @Test
+    @DisplayName("findProfileByUsername loads every trainee with their user")
+    void profileComesWithTrainees() {
+        Trainer sarah = trainer("Sarah", "Miller", "YOGA", true);
+        entityManager.persist(sarah);
+
+        Trainee john = trainee("John", "Smith");
+        Trainee anna = trainee("Anna", "Brown");
+        john.getTrainers().add(sarah);
+        anna.getTrainers().add(sarah);
+        entityManager.persist(john);
+        entityManager.persist(anna);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        Trainer found = trainerDao.findProfileByUsername("Sarah.Miller").orElseThrow();
+
+        Assertions.assertTrue(Hibernate.isInitialized(found.getSpecialization()));
+        Assertions.assertTrue(Hibernate.isInitialized(found.getTrainees()));
+        Assertions.assertEquals(2, found.getTrainees().size());
+        for (Trainee trainee : found.getTrainees()) {
+            Assertions.assertTrue(Hibernate.isInitialized(trainee.getUser()));
+        }
+    }
+
+    @Test
+    @DisplayName("a trainer with no trainees is still found")
+    void trainerWithoutTraineesIsFound() {
+        entityManager.persist(trainer("Sarah", "Miller", "YOGA", true));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        Optional<Trainer> found = trainerDao.findProfileByUsername("Sarah.Miller");
+
+        Assertions.assertTrue(found.isPresent());
+        Assertions.assertTrue(found.get().getTrainees().isEmpty());
     }
 }

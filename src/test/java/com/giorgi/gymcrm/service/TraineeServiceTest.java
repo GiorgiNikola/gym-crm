@@ -120,10 +120,10 @@ class TraineeServiceTest {
     }
 
     @Test
-    @DisplayName("selectByUsername authenticates first and returns the trainee")
+    @DisplayName("selectByUsername authenticates first and returns the full profile")
     void selectsTraineeAfterAuthentication() {
         Trainee john = john(true);
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
 
         Trainee found = traineeService.selectByUsername("John.Smith", PASSWORD);
 
@@ -134,44 +134,21 @@ class TraineeServiceTest {
     @Test
     @DisplayName("selectByUsername throws when the trainee does not exist")
     void throwsWhenTraineeMissing() {
-        when(traineeDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
+        when(traineeDao.findProfileByUsername("Nobody.Here")).thenReturn(Optional.empty());
 
         Assertions.assertThrows(ProfileNotFoundException.class,
                 () -> traineeService.selectByUsername("Nobody.Here", PASSWORD));
     }
 
     @Test
-    @DisplayName("changePassword stores the new password")
-    void changesPassword() {
-        Trainee john = john(true);
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
-
-        traineeService.changePassword("John.Smith", PASSWORD, "newPassword1");
-
-        Assertions.assertEquals("newPassword1", john.getUser().getPassword());
-        verify(traineeDao).update(john);
-    }
-
-    @ParameterizedTest
-    @NullSource
-    @ValueSource(strings = {"", "   "})
-    @DisplayName("changePassword rejects a blank new password")
-    void rejectsBlankNewPassword(String newPassword) {
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> traineeService.changePassword("John.Smith", PASSWORD, newPassword));
-
-        verify(traineeDao, never()).update(any(Trainee.class));
-    }
-
-    @Test
     @DisplayName("updateProfile overwrites the name, date of birth and address")
     void updatesProfileFields() {
         Trainee john = john(true);
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
         when(traineeDao.update(john)).thenReturn(john);
 
         Trainee updated = traineeService.updateProfile("John.Smith", PASSWORD,
-                "Johnny", "Smithson", LocalDate.of(2000, 1, 1), "456 Park Avenue Boston");
+                "Johnny", "Smithson", LocalDate.of(2000, 1, 1), "456 Park Avenue Boston", true);
 
         Assertions.assertEquals("Johnny", updated.getUser().getFirstName());
         Assertions.assertEquals("Smithson", updated.getUser().getLastName());
@@ -180,26 +157,56 @@ class TraineeServiceTest {
     }
 
     @Test
-    @DisplayName("activate throws when the trainee is already active")
-    void activateThrowsWhenAlreadyActive() {
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john(true)));
+    @DisplayName("updateProfile deactivates the trainee when the body says so")
+    void updatesActiveFlag() {
+        Trainee john = john(true);
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.update(john)).thenReturn(john);
 
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> traineeService.activate("John.Smith", PASSWORD));
+        Trainee updated = traineeService.updateProfile("John.Smith", PASSWORD,
+                "John", "Smith", DATE_OF_BIRTH, ADDRESS, false);
 
-        verify(traineeDao, never()).update(any(Trainee.class));
+        Assertions.assertFalse(updated.getUser().isActive());
     }
 
     @Test
-    @DisplayName("deactivate clears the active flag")
-    void deactivateClearsActiveFlag() {
+    @DisplayName("updateProfile brings a deactivated trainee back")
+    void reactivatesTrainee() {
+        Trainee john = john(false);
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.update(john)).thenReturn(john);
+
+        Trainee updated = traineeService.updateProfile("John.Smith", PASSWORD,
+                "John", "Smith", DATE_OF_BIRTH, ADDRESS, true);
+
+        Assertions.assertTrue(updated.getUser().isActive());
+    }
+
+    @Test
+    @DisplayName("updateProfile accepts the state the trainee is already in")
+    void keepsActiveFlagWithoutComplaining() {
         Trainee john = john(true);
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.update(john)).thenReturn(john);
 
-        traineeService.deactivate("John.Smith", PASSWORD);
+        Trainee updated = Assertions.assertDoesNotThrow(() -> traineeService.updateProfile("John.Smith", PASSWORD,
+                "John", "Smith", DATE_OF_BIRTH, ADDRESS, true));
 
-        Assertions.assertFalse(john.getUser().isActive());
-        verify(traineeDao).update(john);
+        Assertions.assertTrue(updated.getUser().isActive());
+    }
+
+    @Test
+    @DisplayName("updateProfile clears the date of birth and the address when they are left out")
+    void clearsOptionalFields() {
+        Trainee john = john(true);
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.update(john)).thenReturn(john);
+
+        Trainee updated = traineeService.updateProfile("John.Smith", PASSWORD,
+                "John", "Smith", null, null, true);
+
+        Assertions.assertNull(updated.getDateOfBirth());
+        Assertions.assertNull(updated.getAddress());
     }
 
     @Test
@@ -220,7 +227,7 @@ class TraineeServiceTest {
         john.getTrainers().add(trainer("Laura", "Davis"));
         Trainer sarah = trainer("Sarah", "Miller");
         Trainer robert = trainer("Robert", "Taylor");
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
         when(trainerDao.findAllByUsernames(Set.of("Sarah.Miller", "Robert.Taylor")))
                 .thenReturn(List.of(sarah, robert));
         when(traineeDao.update(john)).thenReturn(john);
@@ -233,10 +240,25 @@ class TraineeServiceTest {
     }
 
     @Test
+    @DisplayName("updateTrainers with an empty set unassigns every trainer")
+    void emptySetClearsTrainers() {
+        Trainee john = john(true);
+        john.getTrainers().add(trainer("Laura", "Davis"));
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(trainerDao.findAllByUsernames(Set.of())).thenReturn(List.of());
+        when(traineeDao.update(john)).thenReturn(john);
+
+        Trainee updated = traineeService.updateTrainers("John.Smith", PASSWORD, Set.of());
+
+        Assertions.assertTrue(updated.getTrainers().isEmpty());
+        verify(traineeDao).update(john);
+    }
+
+    @Test
     @DisplayName("updateTrainers throws when one trainer username is unknown")
     void updateTrainersThrowsForUnknownTrainer() {
         Trainer sarah = trainer("Sarah", "Miller");
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john(true)));
+        when(traineeDao.findProfileByUsername("John.Smith")).thenReturn(Optional.of(john(true)));
         when(trainerDao.findAllByUsernames(Set.of("Sarah.Miller", "Nobody.Here")))
                 .thenReturn(List.of(sarah));
 
@@ -259,18 +281,6 @@ class TraineeServiceTest {
                 () -> traineeService.selectByUsername("John.Smith", "wrongPassword"));
 
         verifyNoInteractions(traineeDao);
-    }
-
-    @Test
-    @DisplayName("activate sets the flag on an inactive trainee")
-    void activateSetsActiveFlag() {
-        Trainee john = john(false);
-        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
-
-        traineeService.activate("John.Smith", PASSWORD);
-
-        Assertions.assertTrue(john.getUser().isActive());
-        verify(traineeDao).update(john);
     }
 
     @Test

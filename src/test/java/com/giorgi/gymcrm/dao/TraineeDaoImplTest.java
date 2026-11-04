@@ -1,6 +1,6 @@
 package com.giorgi.gymcrm.dao;
 
-import com.giorgi.gymcrm.GymCrmApplication;
+import com.giorgi.gymcrm.config.RootConfig;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
@@ -14,15 +14,17 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.Set;
 
 @ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = GymCrmApplication.class)
+@ContextConfiguration(classes = RootConfig.class)
 @Transactional
 class TraineeDaoImplTest {
 
@@ -168,5 +170,66 @@ class TraineeDaoImplTest {
         Assertions.assertEquals(0, joinTableRows(traineeId));
         Assertions.assertNotNull(entityManager.find(Trainer.class, trainerId));
         Assertions.assertNotNull(entityManager.find(User.class, trainerUserId));
+    }
+
+    @Test
+    @DisplayName("findProfileByUsername loads every trainer with their user and specialization")
+    void profileComesWithTrainers() {
+        Trainer sarah = trainer("Sarah", "Miller", "YOGA");
+        Trainer robert = trainer("Robert", "Taylor", "FITNESS");
+        entityManager.persist(sarah);
+        entityManager.persist(robert);
+
+        Trainee john = trainee("John", "Smith");
+        john.getTrainers().addAll(Set.of(sarah, robert));
+        traineeDao.save(john);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        Trainee found = traineeDao.findProfileByUsername("John.Smith").orElseThrow();
+
+        Assertions.assertTrue(Hibernate.isInitialized(found.getTrainers()));
+        Assertions.assertEquals(2, found.getTrainers().size());
+        for (Trainer trainer : found.getTrainers()) {
+            Assertions.assertTrue(Hibernate.isInitialized(trainer.getUser()));
+            Assertions.assertTrue(Hibernate.isInitialized(trainer.getSpecialization()));
+        }
+    }
+
+    @Test
+    @DisplayName("a trainee with no trainers is still found")
+    void traineeWithoutTrainersIsFound() {
+        traineeDao.save(trainee("John", "Smith"));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        Optional<Trainee> found = traineeDao.findProfileByUsername("John.Smith");
+
+        Assertions.assertTrue(found.isPresent());
+        Assertions.assertTrue(found.get().getTrainers().isEmpty());
+    }
+
+    @Test
+    @DisplayName("delete also works on a trainee that left the persistence context")
+    void deletesDetachedTrainee() {
+        Trainee john = traineeDao.save(trainee("John", "Smith"));
+        entityManager.flush();
+        entityManager.clear();
+
+        traineeDao.delete(john);
+        entityManager.flush();
+
+        Assertions.assertTrue(traineeDao.findByUsername("John.Smith").isEmpty());
+    }
+
+    @Test
+    @DisplayName("a taken username comes out of the dao as a spring data access exception")
+    void translatesDuplicateUsername() {
+        traineeDao.save(trainee("John", "Smith"));
+
+        Assertions.assertThrows(DataIntegrityViolationException.class,
+                () -> traineeDao.save(trainee("John", "Smith")));
     }
 }
