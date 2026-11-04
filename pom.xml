@@ -21,6 +21,8 @@
         <!-- Boot 4.0.8 manages 11.0.24; the previous module ran on 11.0.26 and we keep it. -->
         <tomcat.version>11.0.26</tomcat.version>
         <springdoc.version>3.0.3</springdoc.version>
+        <!-- Not managed by Boot. 0.13.0 is the current release; the api changed at 0.12. -->
+        <jjwt.version>0.13.0</jjwt.version>
         <jacoco.version>0.8.13</jacoco.version>
     </properties>
 
@@ -38,6 +40,35 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- jjwt splits into an api and an implementation on purpose: only jjwt-api is compiled
+             against, the other two are picked up by its ServiceLoader at runtime. jjwt-jackson
+             brings Jackson 2 (com.fasterxml), which Boot 4 still manages and which cannot
+             collide with the Jackson 3 (tools.jackson) that serves our HTTP layer. -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
         </dependency>
 
         <dependency>
@@ -93,6 +124,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-test</artifactId>
             <scope>test</scope>
         </dependency>
 

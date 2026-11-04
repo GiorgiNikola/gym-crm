@@ -22,8 +22,6 @@ import org.springframework.context.annotation.Import;
 import java.time.LocalDate;
 import java.util.List;
 
-// The slice leaves out @Repository beans and exception translation, so both come in explicitly;
-// the datasource stays the H2 PostgreSQL-mode one from application.yml.
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ImportAutoConfiguration(PersistenceExceptionTranslationAutoConfiguration.class)

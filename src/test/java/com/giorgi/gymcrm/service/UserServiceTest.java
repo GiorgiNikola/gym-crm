@@ -1,7 +1,6 @@
 package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.dao.UserDao;
-import com.giorgi.gymcrm.exception.AuthenticationException;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.exception.StateConflictException;
 import com.giorgi.gymcrm.model.User;
@@ -15,6 +14,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
 
@@ -24,13 +25,16 @@ import static org.mockito.Mockito.*;
 class UserServiceTest {
 
     private static final String USERNAME = "John.Smith";
-    private static final String PASSWORD = "aX7kQ2mN9p";
+    private static final String OLD_PASSWORD = "aX7kQ2mN9p";
+    private static final String OLD_HASH = "$2a$10$oldoldoldoldoldoldold";
+    private static final String NEW_PASSWORD = "bY8lR3nO0q";
+    private static final String NEW_HASH = "$2a$10$newnewnewnewnewnewnew";
 
     @Mock
     private UserDao userDao;
 
     @Mock
-    private AuthenticationService authenticationService;
+    private PasswordEncoder passwordEncoder;
 
     @InjectMocks
     private UserService userService;
@@ -41,7 +45,7 @@ class UserServiceTest {
                 .firstName("John")
                 .lastName("Smith")
                 .username(USERNAME)
-                .password(PASSWORD)
+                .password(OLD_HASH)
                 .isActive(active)
                 .build();
     }
@@ -52,10 +56,9 @@ class UserServiceTest {
         User john = john(false);
         when(userDao.findByUsername(USERNAME)).thenReturn(Optional.of(john));
 
-        userService.changeStatus(USERNAME, PASSWORD, true);
+        userService.changeStatus(USERNAME, true);
 
         Assertions.assertTrue(john.isActive());
-        verify(authenticationService).authenticate(USERNAME, PASSWORD);
     }
 
     @Test
@@ -64,7 +67,7 @@ class UserServiceTest {
         User john = john(true);
         when(userDao.findByUsername(USERNAME)).thenReturn(Optional.of(john));
 
-        userService.changeStatus(USERNAME, PASSWORD, false);
+        userService.changeStatus(USERNAME, false);
 
         Assertions.assertFalse(john.isActive());
     }
@@ -75,8 +78,7 @@ class UserServiceTest {
         User john = john(true);
         when(userDao.findByUsername(USERNAME)).thenReturn(Optional.of(john));
 
-        Assertions.assertThrows(StateConflictException.class,
-                () -> userService.changeStatus(USERNAME, PASSWORD, true));
+        Assertions.assertThrows(StateConflictException.class, () -> userService.changeStatus(USERNAME, true));
 
         Assertions.assertTrue(john.isActive());
     }
@@ -87,8 +89,7 @@ class UserServiceTest {
         User john = john(false);
         when(userDao.findByUsername(USERNAME)).thenReturn(Optional.of(john));
 
-        Assertions.assertThrows(StateConflictException.class,
-                () -> userService.changeStatus(USERNAME, PASSWORD, false));
+        Assertions.assertThrows(StateConflictException.class, () -> userService.changeStatus(USERNAME, false));
 
         Assertions.assertFalse(john.isActive());
     }
@@ -99,31 +100,34 @@ class UserServiceTest {
         when(userDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
 
         Assertions.assertThrows(ProfileNotFoundException.class,
-                () -> userService.changeStatus("Nobody.Here", PASSWORD, true));
+                () -> userService.changeStatus("Nobody.Here", true));
     }
 
     @Test
-    @DisplayName("a failed authentication stops the status change before the dao is touched")
-    void statusChangeNeedsValidCredentials() {
-        doThrow(new AuthenticationException("Invalid username or password"))
-                .when(authenticationService).authenticate(USERNAME, "wrongPassword");
-
-        Assertions.assertThrows(AuthenticationException.class,
-                () -> userService.changeStatus(USERNAME, "wrongPassword", false));
-
-        verifyNoInteractions(userDao);
-    }
-
-    @Test
-    @DisplayName("changePassword stores the new password")
+    @DisplayName("changePassword stores the hash of the new password")
     void changesPassword() {
         User john = john(true);
         when(userDao.findByUsername(USERNAME)).thenReturn(Optional.of(john));
+        when(passwordEncoder.matches(OLD_PASSWORD, OLD_HASH)).thenReturn(true);
+        when(passwordEncoder.encode(NEW_PASSWORD)).thenReturn(NEW_HASH);
 
-        userService.changePassword(USERNAME, PASSWORD, "newPassword1");
+        userService.changePassword(USERNAME, OLD_PASSWORD, NEW_PASSWORD);
 
-        Assertions.assertEquals("newPassword1", john.getPassword());
-        verify(authenticationService).authenticate(USERNAME, PASSWORD);
+        Assertions.assertEquals(NEW_HASH, john.getPassword());
+    }
+
+    @Test
+    @DisplayName("a wrong old password leaves the stored hash alone")
+    void rejectsWrongOldPassword() {
+        User john = john(true);
+        when(userDao.findByUsername(USERNAME)).thenReturn(Optional.of(john));
+        when(passwordEncoder.matches("wrongPassword", OLD_HASH)).thenReturn(false);
+
+        Assertions.assertThrows(BadCredentialsException.class,
+                () -> userService.changePassword(USERNAME, "wrongPassword", NEW_PASSWORD));
+
+        Assertions.assertEquals(OLD_HASH, john.getPassword());
+        verify(passwordEncoder, never()).encode(anyString());
     }
 
     @ParameterizedTest
@@ -132,9 +136,9 @@ class UserServiceTest {
     @DisplayName("changePassword rejects a blank new password")
     void rejectsBlankNewPassword(String newPassword) {
         Assertions.assertThrows(IllegalArgumentException.class,
-                () -> userService.changePassword(USERNAME, PASSWORD, newPassword));
+                () -> userService.changePassword(USERNAME, OLD_PASSWORD, newPassword));
 
-        verifyNoInteractions(userDao);
+        verifyNoInteractions(userDao, passwordEncoder);
     }
 
     @Test
@@ -143,36 +147,8 @@ class UserServiceTest {
         when(userDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
 
         Assertions.assertThrows(ProfileNotFoundException.class,
-                () -> userService.changePassword("Nobody.Here", PASSWORD, "newPassword1"));
-    }
+                () -> userService.changePassword("Nobody.Here", OLD_PASSWORD, NEW_PASSWORD));
 
-    @Test
-    @DisplayName("a failed authentication leaves the password untouched")
-    void passwordChangeNeedsValidCredentials() {
-        doThrow(new AuthenticationException("Invalid username or password"))
-                .when(authenticationService).authenticate(USERNAME, "wrongPassword");
-
-        Assertions.assertThrows(AuthenticationException.class,
-                () -> userService.changePassword(USERNAME, "wrongPassword", "newPassword1"));
-
-        verifyNoInteractions(userDao);
-    }
-
-    @Test
-    @DisplayName("login just hands the credentials to the authentication service")
-    void logsIn() {
-        userService.login(USERNAME, PASSWORD);
-
-        verify(authenticationService).authenticate(USERNAME, PASSWORD);
-        verifyNoInteractions(userDao);
-    }
-
-    @Test
-    @DisplayName("login passes a failed authentication on to the caller")
-    void loginFailsForWrongPassword() {
-        doThrow(new AuthenticationException("Invalid username or password"))
-                .when(authenticationService).authenticate(USERNAME, "wrongPassword");
-
-        Assertions.assertThrows(AuthenticationException.class, () -> userService.login(USERNAME, "wrongPassword"));
+        verifyNoInteractions(passwordEncoder);
     }
 }

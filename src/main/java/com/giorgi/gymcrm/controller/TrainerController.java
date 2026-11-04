@@ -6,9 +6,7 @@ import com.giorgi.gymcrm.dto.TrainerRegistrationRequest;
 import com.giorgi.gymcrm.dto.TrainerTrainingResponse;
 import com.giorgi.gymcrm.dto.UpdateTrainerRequest;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
-import com.giorgi.gymcrm.model.User;
-import com.giorgi.gymcrm.web.Credentials;
-import com.giorgi.gymcrm.web.RequestGuards;
+import com.giorgi.gymcrm.facade.RegisteredProfile;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -18,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -44,7 +43,7 @@ public class TrainerController {
     }
 
     @PostMapping
-    @Operation(summary = "Registers a trainer and hands back the generated credentials",
+    @Operation(summary = "Registers a trainer and hands back the generated credentials and a token",
             description = "The specialization is a training type name, as listed by GET /training-types.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "The trainer was registered"),
@@ -52,65 +51,61 @@ public class TrainerController {
                     + "specialization is not a known training type")
     })
     public ResponseEntity<RegistrationResponse> register(@Valid @RequestBody TrainerRegistrationRequest request) {
-        User user = gymCrmFacade.createTrainerProfile(
-                request.firstName(), request.lastName(), request.specialization()).getUser();
+        RegisteredProfile registered = gymCrmFacade.createTrainerProfile(
+                request.firstName(), request.lastName(), request.specialization());
 
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{username}")
-                .buildAndExpand(user.getUsername())
+                .buildAndExpand(registered.username())
                 .toUri();
 
-        return ResponseEntity.created(location)
-                .body(new RegistrationResponse(user.getUsername(), user.getPassword()));
+        return ResponseEntity.created(location).body(RegistrationResponse.from(registered));
     }
 
     @GetMapping("/{username}")
-    @SecurityRequirement(name = "basicAuth")
+    @PreAuthorize("#username == authentication.name")
+    @SecurityRequirement(name = "bearerAuth")
     @Operation(summary = "Returns a trainer profile with the assigned trainees")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "The trainer profile"),
-            @ApiResponse(responseCode = "401", description = "The credentials are missing, malformed or wrong"),
-            @ApiResponse(responseCode = "403", description = "The credentials belong to another user"),
+            @ApiResponse(responseCode = "401", description = "The token is missing or invalid"),
+            @ApiResponse(responseCode = "403", description = "The token belongs to another user"),
             @ApiResponse(responseCode = "404", description = "There is no trainer with that username")
     })
-    public TrainerProfileResponse getProfile(@PathVariable String username,
-                                             @Parameter(hidden = true) Credentials credentials) {
-        RequestGuards.requireSelf(username, credentials);
-        return TrainerProfileResponse.from(
-                gymCrmFacade.selectTrainerProfile(username, credentials.password()));
+    public TrainerProfileResponse getProfile(@PathVariable String username) {
+        return TrainerProfileResponse.from(gymCrmFacade.selectTrainerProfile(username));
     }
 
     @PutMapping("/{username}")
-    @SecurityRequirement(name = "basicAuth")
+    @PreAuthorize("#username == authentication.name")
+    @SecurityRequirement(name = "bearerAuth")
     @Operation(summary = "Replaces a trainer profile",
             description = "The specialization is read only: a specialization sent in the body is ignored.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "The updated trainer profile"),
             @ApiResponse(responseCode = "400", description = "A name is missing or a field is too long"),
-            @ApiResponse(responseCode = "401", description = "The credentials are missing, malformed or wrong"),
-            @ApiResponse(responseCode = "403", description = "The credentials belong to another user"),
+            @ApiResponse(responseCode = "401", description = "The token is missing or invalid"),
+            @ApiResponse(responseCode = "403", description = "The token belongs to another user"),
             @ApiResponse(responseCode = "404", description = "There is no trainer with that username")
     })
     public TrainerProfileResponse updateProfile(@PathVariable String username,
-                                                @Parameter(hidden = true) Credentials credentials,
                                                 @Valid @RequestBody UpdateTrainerRequest request) {
-        RequestGuards.requireSelf(username, credentials);
         return TrainerProfileResponse.from(gymCrmFacade.updateTrainerProfile(
-                username, credentials.password(), request.firstName(), request.lastName(), request.isActive()));
+                username, request.firstName(), request.lastName(), request.isActive()));
     }
 
     @GetMapping("/{username}/trainings")
-    @SecurityRequirement(name = "basicAuth")
+    @PreAuthorize("#username == authentication.name")
+    @SecurityRequirement(name = "bearerAuth")
     @Operation(summary = "Lists the trainings of a trainer, oldest first")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "The matching trainings"),
             @ApiResponse(responseCode = "400", description = "from is after to"),
-            @ApiResponse(responseCode = "401", description = "The credentials are missing, malformed or wrong"),
-            @ApiResponse(responseCode = "403", description = "The credentials belong to another user")
+            @ApiResponse(responseCode = "401", description = "The token is missing or invalid"),
+            @ApiResponse(responseCode = "403", description = "The token belongs to another user")
     })
     public List<TrainerTrainingResponse> getTrainings(
             @PathVariable String username,
-            @Parameter(hidden = true) Credentials credentials,
             @Parameter(description = "Earliest training date to include, as yyyy-MM-dd", example = "2026-08-01")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @Parameter(description = "Latest training date to include, as yyyy-MM-dd", example = "2026-08-31")
@@ -118,9 +113,7 @@ public class TrainerController {
             @Parameter(description = "Part of the trainee's first name, last name or full name, "
                     + "case insensitive", example = "Smith")
             @RequestParam(required = false) String traineeName) {
-        RequestGuards.requireSelf(username, credentials);
-
-        return gymCrmFacade.getTrainerTrainings(username, credentials.password(), from, to, traineeName)
+        return gymCrmFacade.getTrainerTrainings(username, from, to, traineeName)
                 .stream()
                 .map(TrainerTrainingResponse::from)
                 .toList();

@@ -163,4 +163,44 @@ class ProfileConfigTest {
         Assertions.assertEquals(property("local", "logging.level.org.hibernate.SQL"),
                 property("standalone", "logging.level.org.hibernate.SQL"));
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"local", "dev", "standalone"})
+    @DisplayName("a development profile brings a token secret of its own, marked as such")
+    void developmentProfilesCarryAMarkedSecret(String profile) throws IOException {
+        String secret = property(profile, "gymcrm.jwt.secret");
+
+        Assertions.assertTrue(secret.startsWith("${JWT_SECRET:"), secret);
+        Assertions.assertTrue(secret.contains("development-only"), secret);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"stg", "prod"})
+    @DisplayName("staging and production have no token secret to fall back on")
+    void deployedProfilesRequireTheSecret(String profile) throws IOException {
+        Assertions.assertEquals("${JWT_SECRET}", property(profile, "gymcrm.jwt.secret"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"local", "dev", "standalone"})
+    @DisplayName("the development profiles let the local front end servers call the api")
+    void developmentProfilesAllowTheLocalFrontEnds(String profile) throws IOException {
+        Assertions.assertEquals("http://localhost:3000", property(profile, "gymcrm.cors.allowed-origins[0]"));
+        Assertions.assertEquals("http://localhost:4200", property(profile, "gymcrm.cors.allowed-origins[1]"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"stg", "prod"})
+    @DisplayName("a deployed profile names no cross origin caller at all")
+    void deployedProfilesAllowNoOrigin(String profile) throws IOException {
+        Assertions.assertNull(profile(profile).getProperty("gymcrm.cors.allowed-origins[0]"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"local", "dev", "stg", "prod", "standalone"})
+    @DisplayName("no profile writes a secret anywhere but into the jwt secret property")
+    void noProfileLeaksASecretElsewhere(String profile) throws IOException {
+        Assertions.assertNull(profile(profile).getProperty("gymcrm.jwt.ttl"));
+        Assertions.assertNull(profile(profile).getProperty("gymcrm.security.max-login-attempts"));
+    }
 }
