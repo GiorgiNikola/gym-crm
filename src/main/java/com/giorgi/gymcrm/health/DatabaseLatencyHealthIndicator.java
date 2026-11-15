@@ -9,8 +9,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.function.LongSupplier;
 
-// Boot's own "db" indicator answers whether the database is reachable; this one answers
-// whether it is still fast enough to serve requests.
 @Slf4j
 @Component
 public class DatabaseLatencyHealthIndicator implements HealthIndicator {

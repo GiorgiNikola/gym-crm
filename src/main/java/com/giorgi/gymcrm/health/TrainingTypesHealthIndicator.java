@@ -6,8 +6,6 @@ import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;
 
-// Every trainer needs a specialization, so an empty training_types table makes registration
-// impossible even though the database itself is fine.
 @Slf4j
 @Component
 public class TrainingTypesHealthIndicator implements HealthIndicator {

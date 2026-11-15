@@ -1,6 +1,6 @@
 # Gym CRM
 
-Trainees and trainers register, log in, manage their profiles, pick trainers and log trainings, all over HTTP. Data is stored in PostgreSQL. Spring Boot application with four environment profiles, Flyway migrations, actuator health and Prometheus metrics, and Swagger UI.
+Trainees and trainers register, log in, manage their profiles, pick trainers and log trainings, all over HTTP. Data is stored in PostgreSQL. Spring Boot application with four environment profiles plus a standalone one for Docker, Flyway migrations, actuator health and Prometheus metrics, Swagger UI, and Spring Security with JWT bearer tokens.
 
 ## Stack
 
@@ -14,6 +14,8 @@ Java 21 and Spring Boot 4.0.8. The versions Boot manages, from `./mvnw dependenc
 | Tomcat (embedded) | 11.0.26 |
 | Flyway | 11.14.1 |
 | Micrometer | 1.16.7 |
+| Spring Security | 7.0.7 |
+| jjwt (not managed by Boot) | 0.13.0 |
 | springdoc OpenAPI | 3.0.3 |
 | HikariCP | 7.0.2 |
 | PostgreSQL driver | 42.7.13 |
@@ -49,6 +51,12 @@ export DB_USERNAME=postgres
 export DB_PASSWORD=yourpassword
 ```
 
+The JWT signing secret is optional on local and dev, they fall back to a development secret. To use your own, set `JWT_SECRET` to a random value of at least 32 bytes:
+
+```powershell
+$env:JWT_SECRET="a-random-value-of-at-least-32-bytes"
+```
+
 Then start it:
 
 ```bash
@@ -81,15 +89,26 @@ That also writes the coverage report to `target/site/jacoco/index.html`.
 | Actuator | health, info, metrics, prometheus | health, info, metrics, prometheus | health, prometheus | health, prometheus |
 | Health details | always | always | never, components only | never, components only |
 | Swagger UI | on | on | off | off |
+| JWT secret | `JWT_SECRET` or a development default | `JWT_SECRET` or a development default | `JWT_SECRET` | `JWT_SECRET` |
+| CORS origins | `localhost:3000`, `localhost:4200` | `localhost:3000`, `localhost:4200` | none | none |
 
-`DB_USERNAME` and `DB_PASSWORD` are required everywhere.
+A fifth profile, `standalone`, is the default inside the Docker image: in-memory H2, the development JWT secret and the same CORS origins as local. See Running in Docker.
 
-stg and prod have no fallback URL on purpose, and they refuse to start without one:
+`DB_USERNAME` and `DB_PASSWORD` are required everywhere except standalone. The token lifetime (`gymcrm.jwt.ttl`, 1h) and the lockout settings (`gymcrm.security.max-login-attempts`, 3, and `gymcrm.security.lock-duration`, 5m) are shared by every profile.
+
+stg and prod have no fallback URL or secret on purpose, and they refuse to start without them:
 
 ```
 java.lang.IllegalStateException: The prod profile has no default database url: set the DB_URL
 environment variable to the jdbc url of the prod database
 ```
+
+```
+java.lang.IllegalStateException: The prod profile has no default token secret: set the JWT_SECRET
+environment variable to a random value of at least 32 bytes
+```
+
+A secret shorter than 32 bytes also stops the startup, because HS256 needs a 256 bit key.
 
 That check runs before any bean is built. Without it the unresolved placeholder reaches Hikari, which only says `'url' must start with "jdbc"` and never mentions the variable.
 
@@ -110,13 +129,13 @@ If you have a `gymcrm` database left over from the older Hibernate setup, drop i
 
 Swagger UI is at `http://localhost:8080/swagger-ui.html`, which redirects to `/swagger-ui/index.html`. The OpenAPI document is at `/v3/api-docs`.
 
-The spec is generated from the Swagger annotations on the controllers. It declares `basicAuth` as an HTTP basic security scheme, so the UI shows an Authorize button. Fill it in once and every secured endpoint sends the header. The two registration endpoints carry no security block, so they show no padlock.
+The spec is generated from the Swagger annotations on the controllers. It declares `bearerAuth` as an HTTP bearer scheme with JWT format, so the UI shows an Authorize button. Paste a token from registration or login once and every secured endpoint sends it. The two registration endpoints carry no security block, so they show no padlock.
 
 Both are off on stg and prod, through `springdoc.api-docs.enabled: false` and `springdoc.swagger-ui.enabled: false`. The spec and the UI return 404 there.
 
 ## Actuator
 
-Exposed per profile as in the table above. Nothing is behind Basic auth: the authentication in this app is a per-endpoint argument resolver on the controllers, and actuator endpoints are not controllers. On stg and prod the exposure is cut to health and prometheus, and health shows which components exist without their details.
+Exposed per profile as in the table above. Actuator is public: the security chain lets `/actuator/**` through without a token, so a Prometheus scraper or a load balancer health check needs no credentials. On stg and prod the exposure is cut to health and prometheus, and health shows which components exist without their details.
 
 ```bash
 curl http://localhost:8080/actuator/health
@@ -142,7 +161,7 @@ Four meters, all tagged `application="gym-crm"`:
 | Meter | Type | Tags |
 |---|---|---|
 | `gymcrm.registrations` | counter | `role` = trainee or trainer |
-| `gymcrm.logins` | counter | `outcome` = success or failure |
+| `gymcrm.logins` | counter | `outcome` = success, failure or locked |
 | `gymcrm.trainings.added` | counter | none |
 | `gymcrm.training.duration` | distribution summary, minutes | none |
 
@@ -154,6 +173,7 @@ curl -s http://localhost:8080/actuator/prometheus | grep gymcrm_
 
 ```
 gymcrm_logins_total{application="gym-crm",outcome="failure"} 0.0
+gymcrm_logins_total{application="gym-crm",outcome="locked"} 0.0
 gymcrm_logins_total{application="gym-crm",outcome="success"} 0.0
 gymcrm_registrations_total{application="gym-crm",role="trainee"} 1.0
 gymcrm_registrations_total{application="gym-crm",role="trainer"} 0.0
@@ -162,7 +182,7 @@ gymcrm_training_duration_minutes_sum{application="gym-crm"} 0.0
 gymcrm_trainings_added_total{application="gym-crm"} 0.0
 ```
 
-Two things to know when reading the login counter. It counts authentications, not calls to `/auth/login`, so every secured endpoint adds to it. And a blank or malformed `Authorization` header is not counted as a failure, because it never reaches the password check, it is rejected as a bad request first. Only a wrong username or password counts as a failure.
+The login counter counts calls to `POST /auth/login` only. Requests with a bearer token do not touch it. `failure` is a wrong username or password, `locked` is an attempt while the username is locked out. A body with a blank username or password is rejected as a bad request before the check and is not counted.
 
 No usernames in tags. One time series per user would be unbounded.
 
@@ -275,13 +295,13 @@ curl -s -X POST http://localhost:8080/trainees \
   -H "Content-Type: application/json" -d '{"firstName":"Log","lastName":"Case"}'
 
 curl -i http://localhost:8080/training-types \
-  -H "Authorization: Basic $(printf 'Log.Case:the-generated-password' | base64)" \
+  -H "Authorization: Bearer the-token-from-the-registration-response" \
   -H "X-Transaction-Id: demo-123"
 
 docker exec gym-crm grep demo-123 /app/logs/gym-crm.log
 ```
 
-Passwords are masked and headers are never logged, so the file holds no credentials.
+Passwords and tokens are masked and headers are never logged, so the file holds no credentials.
 
 ### The image
 
@@ -297,30 +317,31 @@ database.
 
 ## Trying it
 
-`postman/gym-crm.postman_collection.json` holds 63 requests with assertions on every one. Import it, start the app, and run the whole collection with the Collection Runner. It registers fresh users on every run, so you can run it again without restarting.
+`postman/gym-crm.postman_collection.json` holds 72 requests with assertions on every one. Import it, start the app with the local or dev profile, and run the whole collection with the Collection Runner. It registers fresh users on every run, so you can run it again without restarting.
 
-The requests use Basic auth from collection variables, and the registration requests save the generated credentials into those variables. You never copy a password by hand.
+The registration and login requests save the returned tokens into collection variables, and every other request sends the matching one as `Authorization: Bearer`. You never copy a token by hand. The collection also walks through the lockout (three wrong logins, then 429), logout, and a CORS preflight. The CORS check only passes on local and dev, the profiles with allowed origins.
 
 ## Endpoints
 
 | PDF | Method | Path | Auth | Success |
 |---|---|---|---|---|
-| 1 | POST | `/trainees` | none | 201 |
-| 2 | POST | `/trainers` | none | 201 |
-| 3 | GET | `/auth/login` | Basic | 200 |
-| 4 | PUT | `/users/{username}/password` | old password in body | 200 |
-| 5 | GET | `/trainees/{username}` | Basic, self | 200 |
-| 6 | PUT | `/trainees/{username}` | Basic, self | 200 |
-| 7 | DELETE | `/trainees/{username}` | Basic, self | 200 |
-| 8 | GET | `/trainers/{username}` | Basic, self | 200 |
-| 9 | PUT | `/trainers/{username}` | Basic, self | 200 |
-| 10 | GET | `/trainees/{username}/unassigned-trainers` | Basic, self | 200 |
-| 11 | PUT | `/trainees/{username}/trainers` | Basic, self | 200 |
-| 12 | GET | `/trainees/{username}/trainings` | Basic, self | 200 |
-| 13 | GET | `/trainers/{username}/trainings` | Basic, self | 200 |
-| 14 | POST | `/trainings` | Basic | 200 |
-| 15, 16 | PATCH | `/users/{username}/status` | Basic, self | 200 |
-| 17 | GET | `/training-types` | Basic | 200 |
+| 1 | POST | `/trainees` | none | 201, returns a token |
+| 2 | POST | `/trainers` | none | 201, returns a token |
+| 3 | POST | `/auth/login` | none, credentials in the body | 200, returns a token |
+| 4 | PUT | `/users/{username}/password` | token, self, old password in body | 200 |
+| 5 | GET | `/trainees/{username}` | token, self | 200 |
+| 6 | PUT | `/trainees/{username}` | token, self | 200 |
+| 7 | DELETE | `/trainees/{username}` | token, self | 200 |
+| 8 | GET | `/trainers/{username}` | token, self | 200 |
+| 9 | PUT | `/trainers/{username}` | token, self | 200 |
+| 10 | GET | `/trainees/{username}/unassigned-trainers` | token, self | 200 |
+| 11 | PUT | `/trainees/{username}/trainers` | token, self | 200 |
+| 12 | GET | `/trainees/{username}/trainings` | token, self | 200 |
+| 13 | GET | `/trainers/{username}/trainings` | token, self | 200 |
+| 14 | POST | `/trainings` | token, caller is the trainee or the trainer | 200 |
+| 15, 16 | PATCH | `/users/{username}/status` | token, self | 200 |
+| 17 | GET | `/training-types` | token | 200 |
+| | POST | `/auth/logout` | token | 204 |
 
 The PDF lists activation for trainees and trainers as two endpoints. The active flag lives on the `users` table, and usernames are unique across both, so it is one endpoint here and one method in the code.
 
@@ -328,7 +349,7 @@ URLs use plural nouns and the username as the identifier. Usernames never change
 
 ### Status codes worth knowing
 
-Registration returns 201 with a `Location` header pointing at the new profile. DELETE and POST `/trainings` return 200 with an empty body, because the PDF says 200 for both.
+Registration returns 201 with a `Location` header pointing at the new profile, and a body with the username, the generated password and a token. The password is shown this one time, the database only keeps its hash. DELETE and POST `/trainings` return 200 with an empty body, because the PDF says 200 for both.
 
 ### Idempotency
 
@@ -356,11 +377,25 @@ The name filters on the training lists match the first name, the last name, or t
 
 ## Authentication
 
-Every request except the two registrations carries HTTP Basic credentials. A resolver parses the `Authorization` header into a `Credentials` object and the services check it against the database.
+Spring Security guards every request. The two registrations, `POST /auth/login`, actuator and the API docs are open; everything else needs a JWT in the `Authorization: Bearer` header.
 
-A missing, malformed or blank header gives 401 with `WWW-Authenticate: Basic realm="gym-crm"`. A wrong password and an unknown username give the same 401, so it does not reveal which usernames exist.
+**Getting a token.** Registration returns one straight away. After that, `POST /auth/login` with `{"username": "...", "password": "..."}` returns `{"token": "..."}`. Spring's `DaoAuthenticationProvider` checks the password through `GymUserDetailsService`, which reads the user from `UserDao`. A wrong password and an unknown username give the same 401 "Invalid username or password", so the API does not reveal which usernames exist.
 
-Endpoints with `{username}` in the path only act on yourself. If the path does not match the username in the credentials, the answer is 403. Change password is the exception: the task's request has the username and old password in it, so that endpoint authenticates with those and ignores the header.
+**The token.** HS256, signed with `JWT_SECRET`, built and parsed with jjwt in `JwtService`. It carries the username as `sub`, `iat`, `exp` (one hour by default) and a random `jti`. Nothing secret is in it: a JWT is signed, not encrypted, and anyone can read its payload.
+
+**Checking it.** `JwtAuthenticationFilter` runs inside the security chain on every request. No `Bearer` header: it does nothing, and a protected endpoint answers 401 later. A valid token: it puts the user into the security context. An expired, tampered, malformed or revoked token: it stops the request with 401 and `WWW-Authenticate: Bearer error="invalid_token"`. The filter is created inside `SecurityConfig` instead of being a bean, because Boot would otherwise also register it as a plain servlet filter and it would run twice.
+
+**Only your own data.** Every endpoint with `{username}` in the path has `@PreAuthorize("#username == authentication.name")`. A valid token on someone else's path gives 403. `POST /trainings` takes both people from the body, so its rule is that the caller must be the trainee or the trainer of that training.
+
+**Passwords.** Stored as BCrypt hashes. BCrypt generates a random salt per hash and keeps it inside the hash, so two users with the same password get different values. Login and the password change both compare through the `PasswordEncoder`. Changing the password needs a token for that user and the correct old password; a wrong old password is 401.
+
+**Brute force protection.** `LoginAttemptService` counts failed logins per username. The third failure locks the username for five minutes. While it is locked, `POST /auth/login` answers 429 with a `Retry-After` header in seconds and does not check the password at all, so even the right password is refused. A successful login resets the count. Unknown usernames are counted and locked exactly like real ones. The counts live in memory, so they reset when the app restarts.
+
+**Logout.** `POST /auth/logout` with the token returns 204 (only POST; `GET /auth/logout` is a 404 and logs nobody out), and that token is refused from then on. It goes through Spring Security's logout support: a `LogoutHandler` adds the token's `jti` to `TokenRevocationService`, an in-memory deny list that drops each entry once the token would have expired anyway. Logout ends the token it was called with; other tokens of the same user stay valid until they expire. Without a valid token, logout is 401.
+
+**CORS.** Configured in the security chain. Allowed origins come from `gymcrm.cors.allowed-origins` per profile. The allowed headers are `Authorization`, `Content-Type` and `X-Transaction-Id`; `X-Transaction-Id` and `Location` are exposed to the browser. Preflight requests need no token. No cookies are used, so CSRF protection is off and the session is stateless.
+
+**Deactivated users** can still log in. Deactivation only takes a trainer off the list of trainers a trainee can pick, and if it blocked login, a deactivated user could never activate themselves again.
 
 ## Errors
 
@@ -375,13 +410,14 @@ There is no `type` field. Spring leaves it out while it is the default `about:bl
 | Status | When |
 |---|---|
 | 400 | Validation failed (with an `errors` map), malformed JSON, bad input like an unknown training type or a from date after the to date |
-| 401 | Missing or wrong credentials |
-| 403 | Path username does not match the credentials |
-| 404 | Profile or trainer not found, or an unknown URL |
+| 401 | Missing, invalid, expired or revoked token, wrong login credentials, wrong old password. Token problems carry `WWW-Authenticate: Bearer` |
+| 403 | Valid token, but the data belongs to someone else |
+| 404 | Profile or trainer not found, or an unknown URL called with a valid token. Without a token an unknown URL is 401, because authentication is checked before the URL is resolved |
 | 409 | Status already set, or a username taken by a parallel registration |
+| 429 | Login while the username is locked, with `Retry-After` |
 | 500 | Anything unexpected. The detail is a fixed "Unexpected error", never the exception message |
 
-Unknown URLs return the same JSON shape, not Tomcat's HTML error page.
+Unknown URLs return the same JSON shape, not Tomcat's HTML error page. So do 401 and 403 from the security chain: they are written by `ProblemAuthenticationEntryPoint` and `ProblemAccessDeniedHandler` through one shared `ProblemDetailWriter`, because errors raised in the filter chain never reach `GlobalExceptionHandler`.
 
 ## Logging
 
@@ -391,7 +427,9 @@ One summary line per request: method, URL, status and time taken. INFO below 400
 
 Actuator and API docs requests are not logged at all. Prometheus scrapes every few seconds and the docs UI pulls the spec on every page load, and those lines would bury the real traffic. The skipped prefixes are `/actuator/`, `/swagger-ui.html`, `/swagger-ui/` and `/v3/api-docs`, kept in one list in `RequestLoggingFilter`. The transaction ID filter still runs for everything.
 
-Any JSON field whose name ends in `password` is masked before it is logged, including the generated password in a registration response. Headers are never logged, so the `Authorization` header never reaches the log.
+Any JSON field whose name ends in `password` or `token` is masked before it is logged, including the generated password and the token in a registration response. Headers are never logged, so the `Authorization` header never reaches the log.
+
+Security events are logged with the transaction ID, and with the username where it is known: a successful login at INFO, a failed login, a lock, an attempt while locked and a rejected or revoked token at WARN, a denied request at WARN with the method, the path and the caller, a logout at INFO. `AccessDenialLog` writes that denial line in one place, so the security chain and the MVC layer produce the same one, for example `Denied GET /trainees/Other.Owner for user Logged.Denial`. Passwords, hashes and tokens never appear.
 
 A failed request is logged once. Only the 500 handler adds a stack trace, because only a 500 is a bug.
 
@@ -402,13 +440,16 @@ A failed request is logged once. Only the 500 handler adds a stack trace, becaus
 `GymCrmApplication` is a plain `@SpringBootApplication`, plus `@ConfigurationPropertiesScan` so the `@ConfigurationProperties` records bind without being listed one by one.
 
 - `FilterConfig` registers the two filters. Boot's character encoding filter runs first at `HIGHEST_PRECEDENCE`, then the transaction ID filter at `+1`, then request logging at `+2`. The order matters: the ID has to be on the MDC before the request log writes its line. Boot slots its own filters in between, so `FilterConfigTest` asserts the relative order rather than fixed positions.
-- `WebConfig` is a `WebMvcConfigurer` that adds the Basic credentials resolver, and carries the `@SecurityScheme` annotation the spec is generated from.
-- `RequiredDatabaseUrlProcessor` is an `EnvironmentPostProcessor` registered in `META-INF/spring.factories`. It stops stg and prod before any bean is created when `DB_URL` is missing.
+- `SecurityConfig` holds the security filter chain, the BCrypt encoder, the `AuthenticationManager`, the CORS configuration and the logout setup. Inside the chain, `JwtAuthenticationFilter` sits before Spring's `LogoutFilter`, so logout already knows who is logging out. Our transaction ID and request logging filters wrap the whole chain, so a 401 from security is still logged with its transaction ID.
+- `OpenApiConfig` carries the `@SecurityScheme` annotation the spec is generated from.
+- `RequiredDatabaseUrlProcessor` and `RequiredJwtSecretProcessor` are `EnvironmentPostProcessor`s registered in `META-INF/spring.factories`. They share `RequiredDeployedVariableProcessor` and stop stg and prod before any bean is created when `DB_URL` or `JWT_SECRET` is missing.
 - `StartupInfoLogger` writes one line on startup with the active profiles and the JDBC URL. The username and password are separate properties and never reach the log.
 
-Injection is setter based in the services, constructor based in the facade and controllers. Transactions sit on the services, one service method is one unit of work.
+Injection is constructor based everywhere: final fields and one constructor per class, with no `@Autowired` on it. The only `@Autowired` left in the project marks which of the two constructors of `DatabaseLatencyHealthIndicator` Spring should use. Transactions sit on the services, one service method is one unit of work.
 
-Controllers only talk to the facade and only return DTOs, never entities.
+Controllers only talk to the facade and only return DTOs, never entities. The services no longer take passwords: who the caller is comes from Spring Security, and the services only receive the username.
+
+Package rule: `security` holds what plugs into Spring Security or handles tokens (the filter, the entry point and access denied handler, `GymUserDetailsService`, `JwtService`, `TokenRevocationService`, the logout handlers). `service` holds the application rules, including `LoginService` and `LoginAttemptService`. Dependencies point one way, from `service` to `security`, never back.
 
 ## Fetching
 
@@ -445,7 +486,7 @@ Deleting a trainee removes their user row, their trainings, and their rows in th
 
 A username is `FirstName.LastName`, with a number appended if it is taken, so `John.Smith1`, then `John.Smith2`. The check covers trainees and trainers together. The column is 120 characters, enough for two 50 character names plus a suffix.
 
-Passwords are 10 random characters from an alphabet that leaves out `I`, `O`, `l`, `0` and `1`, so they do not get misread.
+Passwords are 10 random characters from an alphabet that leaves out `I`, `O`, `l`, `0` and `1`, so they do not get misread. Generation is unchanged by the security module; `UserFactory` generates the password, hashes it for storage and hands the plain one back once for the registration response.
 
 ## Design
 
@@ -453,18 +494,23 @@ Passwords are 10 random characters from an alphabet that leaves out `I`, `O`, `l
 - **DAO**: persistence behind interfaces, `EntityManager` underneath.
 - **DTO**: records for every request and response, built with static `from` methods.
 - **Chain of Responsibility**: the servlet filter chain, encoding then transaction ID then request logging.
-- **Strategy**: the Basic credentials resolver plugs into Spring MVC's argument resolution.
-- **Template Method**: the filters extend `OncePerRequestFilter`, the error handler extends `ResponseEntityExceptionHandler`.
+- **Chain of Responsibility**, again: the Spring Security filter chain, with the JWT filter as one more link.
+- **Strategy**: `PasswordEncoder`, `UserDetailsService`, `AuthenticationEntryPoint`, `AccessDeniedHandler`, `LogoutHandler` and `LogoutSuccessHandler` are all Spring Security strategy interfaces with our implementations plugged in.
+- **Factory**: `UserFactory` builds a new user with a generated username and a hashed password.
+- **Template Method**: the filters extend `OncePerRequestFilter`, the error handler extends `ResponseEntityExceptionHandler`, and both required variable processors extend `RequiredDeployedVariableProcessor`.
 
 ## Testing
 
-358 tests, 100% line and branch coverage, with only `GymCrmApplication` excluded.
+516 tests, 100% line and branch coverage, with only `GymCrmApplication` excluded.
 
 - DAO tests use `@DataJpaTest` against H2 and roll back after each test.
 - Services and the facade are tested with Mockito, no Spring context.
-- Controllers are tested with standalone MockMvc.
+- Controllers are tested with standalone MockMvc. The 403 cases need the real `@PreAuthorize` proxies, so they live in `MethodSecurityTest`, which uses `spring-security-test`.
+- `SecurityIntegrationTest` goes through the full security chain over HTTP with real tokens: registration and login tokens, missing, garbage, expired and revoked tokens, someone else's data, the lockout with `Retry-After`, logout, CORS preflight, and that the stored password is a BCrypt hash.
+- `JwtService`, `LoginAttemptService` and `TokenRevocationService` get an injected `Clock`, so expiry and the five minute lock are tested by moving time, not by sleeping.
+- `SecurityConfigTest` checks that the JWT filter is not a bean, sits once in the chain, and runs before `LogoutFilter`.
 - `WebContextTest` runs requests through the real application context, filters and database.
-- `ProfileFetchIntegrationTest` and `ActuatorIntegrationTest` are the tests that commit. Both clear every table with `JdbcTestUtils` after each test, so no test depends on leftovers from another.
+- `ProfileFetchIntegrationTest`, `ActuatorIntegrationTest` and `SecurityIntegrationTest` are the tests that commit. All three clear every table with `JdbcTestUtils` after each test, so no test depends on leftovers from another.
 - `ProfileConfigTest` loads each `application-{profile}.yml` with `YamlPropertySourceLoader` and checks the URL, the pool size, `ddl-auto` and the Swagger flags, so a typo in a profile file fails the build instead of reaching an environment.
 - `ActuatorIntegrationTest` reads `/actuator/health` and `/actuator/prometheus`, `ApiDocsIntegrationTest` reads the generated spec and the UI page, and `ApiDocsDisabledIntegrationTest` checks both return 404 with the two springdoc flags off.
 
@@ -479,13 +525,28 @@ The suite passes in normal order and in reverse alphabetical order (`-Dsurefire.
 - Prometheus metrics for registrations, logins, trainings and training duration.
 - Swagger UI, off on stg and prod.
 
+## What the Spring Security module added
+
+- Spring Security on every endpoint except the two registrations and login. Basic auth and the hand written credentials resolver are gone.
+- JWT bearer tokens from registration and `POST /auth/login`, signed with HS256 through jjwt, checked by our own filter in the security chain.
+- BCrypt password hashes with a per hash salt.
+- Brute force protection: three failed logins lock a username for five minutes, answered with 429 and `Retry-After`.
+- Logout through Spring Security's logout support, with an in-memory deny list of revoked tokens.
+- CORS per profile.
+- `@PreAuthorize` self checks, and `POST /trainings` limited to its own trainee or trainer.
+- Problem detail JSON for 401 and 403 from the security chain, tokens masked in the logs, and a `locked` outcome on the login metric.
+
 ## Known limitations
 
-Passwords are stored and compared in plain text. The task asks for password matching at this stage, hashing comes with Spring Security.
+The lockout counts and the revoked tokens live in memory. A restart clears both, and with two instances of the app each would keep its own. A shared store, for example Redis, would fix that.
 
-Being logged in is not the same as being allowed. The self check covers every endpoint with a username in the path, but POST `/trainings` takes both people from the body, so any user can log a training between any trainee and trainer.
+Logout ends one token. Other tokens of the same user stay valid until they expire, and there is no refresh token: after an hour the user logs in again.
 
-A deactivated user can still log in and use the API. The task does not say what deactivation should block.
+Changing the password or deactivating a user does not revoke tokens already issued. They keep working until they expire, up to an hour.
+
+A database left over from the previous module holds plain text passwords, which never match a BCrypt hash. Drop and recreate it once.
+
+A deactivated user can still log in and use the API, on purpose, as explained under Authentication.
 
 `GET /training-types` needs credentials, because the PDF says every endpoint except registration does. A registration form that wants to show the type list first has no way to get it without an account.
 

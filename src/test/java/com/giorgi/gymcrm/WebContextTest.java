@@ -6,7 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.giorgi.gymcrm.dto.RegistrationResponse;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
-import com.giorgi.gymcrm.model.Trainee;
+import com.giorgi.gymcrm.facade.RegisteredProfile;
 import com.giorgi.gymcrm.web.RequestLoggingFilter;
 import com.giorgi.gymcrm.web.TransactionIdFilter;
 import org.junit.jupiter.api.Assertions;
@@ -17,15 +17,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.util.Base64;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -36,37 +35,36 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// MockMvc comes from Boot with the registered filters in front of it, so the transaction id
-// and the request log run here exactly as they do in the server.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
 class WebContextTest {
 
+    private static final String THROWING_CONTROLLER =
+            "com.giorgi.gymcrm.controller.GlobalExceptionHandlerTest$ThrowingController";
+
     @Autowired
     private GymCrmFacade gymCrmFacade;
+
+    @Autowired
+    private ApplicationContext applicationContext;
 
     @Autowired
     private MockMvc mockMvc;
 
     private String username;
-    private String password;
+    private String token;
 
     @BeforeEach
     void seedTrainee() {
-        Trainee trainee = gymCrmFacade.createTraineeProfile(
+        RegisteredProfile seeded = gymCrmFacade.createTraineeProfile(
                 "John", "Smith", LocalDate.of(1998, 5, 14), "123 Main St New York");
-        username = trainee.getUser().getUsername();
-        password = trainee.getUser().getPassword();
+        username = seeded.username();
+        token = seeded.token();
     }
 
-    private String basic() {
-        return basic(username, password);
-    }
-
-    private String basic(String user, String secret) {
-        return "Basic " + Base64.getEncoder()
-                .encodeToString((user + ":" + secret).getBytes(StandardCharsets.UTF_8));
+    private String bearer() {
+        return "Bearer " + token;
     }
 
     private RegistrationResponse registerTrainee(String firstName, String lastName) throws Exception {
@@ -83,9 +81,23 @@ class WebContextTest {
     void registersTraineeThatCanLogIn() throws Exception {
         RegistrationResponse registered = registerTrainee("Mary", "Jones");
 
-        mockMvc.perform(get("/auth/login")
-                        .header(HttpHeaders.AUTHORIZATION, basic(registered.username(), registered.password())))
-                .andExpect(status().isOk());
+        mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + registered.username() + "\""
+                                + ",\"password\":\"" + registered.password() + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("the token handed out at registration already opens a protected endpoint")
+    void registrationTokenWorksImmediately() throws Exception {
+        RegistrationResponse registered = registerTrainee("Mary", "Jones");
+
+        mockMvc.perform(get("/trainees/{username}", registered.username())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + registered.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value(registered.username()));
     }
 
     @Test
@@ -103,14 +115,15 @@ class WebContextTest {
                         .content("""
                                 {"firstName":"Sarah","lastName":"Miller","specialization":"YOGA"}"""))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.username").value("Sarah.Miller"));
+                .andExpect(jsonPath("$.username").value("Sarah.Miller"))
+                .andExpect(jsonPath("$.token").isNotEmpty());
     }
 
     @Test
     @DisplayName("a deleted trainee cannot be read back")
     void deletesRegisteredTrainee() throws Exception {
         RegistrationResponse registered = registerTrainee("Mary", "Jones");
-        String credentials = basic(registered.username(), registered.password());
+        String credentials = "Bearer " + registered.token();
 
         mockMvc.perform(delete("/trainees/{username}", registered.username())
                         .header(HttpHeaders.AUTHORIZATION, credentials))
@@ -118,12 +131,12 @@ class WebContextTest {
 
         mockMvc.perform(get("/trainees/{username}", registered.username())
                         .header(HttpHeaders.AUTHORIZATION, credentials))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isNotFound());
     }
 
     @Test
-    @DisplayName("the generated password never reaches the logs")
-    void keepsGeneratedPasswordOutOfTheLogs() throws Exception {
+    @DisplayName("neither the generated password nor the token reaches the logs")
+    void keepsGeneratedSecretsOutOfTheLogs() throws Exception {
         Logger filterLogger = (Logger) LoggerFactory.getLogger(RequestLoggingFilter.class);
         Level originalLevel = filterLogger.getLevel();
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
@@ -132,11 +145,13 @@ class WebContextTest {
         filterLogger.addAppender(appender);
 
         try {
-            String password = registerTrainee("Mary", "Jones").password();
+            RegistrationResponse registered = registerTrainee("Mary", "Jones");
 
             Assertions.assertFalse(appender.list.isEmpty());
             for (ILoggingEvent event : appender.list) {
-                Assertions.assertFalse(event.getFormattedMessage().contains(password), event.getFormattedMessage());
+                String line = event.getFormattedMessage();
+                Assertions.assertFalse(line.contains(registered.password()), line);
+                Assertions.assertFalse(line.contains(registered.token()), line);
             }
         } finally {
             filterLogger.detachAppender(appender);
@@ -146,40 +161,35 @@ class WebContextTest {
     }
 
     @Test
-    @DisplayName("GET /auth/login accepts the seeded trainee")
-    void logsInWithRealCredentials() throws Exception {
-        mockMvc.perform(get("/auth/login").header(HttpHeaders.AUTHORIZATION, basic()))
-                .andExpect(status().isOk());
-    }
-
-    @Test
     @DisplayName("GET /training-types goes through the real wiring to the database")
     void servesTrainingTypes() throws Exception {
-        mockMvc.perform(get("/training-types").header(HttpHeaders.AUTHORIZATION, basic()))
+        mockMvc.perform(get("/training-types").header(HttpHeaders.AUTHORIZATION, bearer()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(5));
     }
 
     @Test
-    @DisplayName("a request without credentials comes back as 401")
-    void rejectsRequestWithoutCredentials() throws Exception {
+    @DisplayName("a request without a token comes back as 401 and asks for a bearer one")
+    void rejectsRequestWithoutToken() throws Exception {
         mockMvc.perform(get("/training-types"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Basic realm=\"gym-crm\""));
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
 
     @Test
-    @DisplayName("Basic with a blank username comes back as 401")
-    void rejectsBlankUsername() throws Exception {
-        mockMvc.perform(get("/training-types").header(HttpHeaders.AUTHORIZATION, basic("   ", password)))
-                .andExpect(status().isUnauthorized());
+    @DisplayName("a token that is not a token comes back as 401 and says the token was the problem")
+    void rejectsGarbageToken() throws Exception {
+        mockMvc.perform(get("/training-types").header(HttpHeaders.AUTHORIZATION, "Bearer not-a-token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer error=\"invalid_token\""));
     }
 
     @Test
     @DisplayName("the real validator rejects a status body without isActive")
     void rejectsStatusWithoutFlag() throws Exception {
         mockMvc.perform(patch("/users/{username}/status", username)
-                        .header(HttpHeaders.AUTHORIZATION, basic())
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest())
@@ -190,15 +200,47 @@ class WebContextTest {
     @Test
     @DisplayName("every response carries a transaction id")
     void tagsResponsesWithATransactionId() throws Exception {
-        mockMvc.perform(get("/training-types").header(HttpHeaders.AUTHORIZATION, basic()))
+        mockMvc.perform(get("/training-types").header(HttpHeaders.AUTHORIZATION, bearer()))
                 .andExpect(header().exists(TransactionIdFilter.TRANSACTION_ID_HEADER));
     }
 
     @Test
-    @DisplayName("an unknown path comes back as a problem detail")
+    @DisplayName("a 401 from the security chain still carries a transaction id")
+    void tagsRejectedResponsesWithATransactionId() throws Exception {
+        mockMvc.perform(get("/training-types"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().exists(TransactionIdFilter.TRANSACTION_ID_HEADER));
+    }
+
+    @Test
+    @DisplayName("an unknown path comes back as a problem detail once a token is presented")
     void reportsUnknownPathAsProblem() throws Exception {
-        mockMvc.perform(get("/no-such-path"))
+        mockMvc.perform(get("/no-such-path").header(HttpHeaders.AUTHORIZATION, bearer()))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @Test
+    @DisplayName("an unknown path without a token is a 401, so the url space stays hidden")
+    void hidesUnknownPathsFromAnonymousCallers() throws Exception {
+        mockMvc.perform(get("/no-such-path"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("the throwing controller the error handler test uses is not a bean here")
+    void keepsTheTestOnlyThrowingControllerOutOfTheContext() throws Exception {
+        Class<?> throwingController = Class.forName(THROWING_CONTROLLER);
+
+        Assertions.assertTrue(applicationContext.getBeansOfType(throwingController).isEmpty(),
+                "a test fixture reached the application context as "
+                        + applicationContext.getBeansOfType(throwingController).keySet());
+    }
+
+    @Test
+    @DisplayName("none of the throwing controller's paths are mapped in the application")
+    void leavesTheTestOnlyThrowingControllerPathsUnmapped() throws Exception {
+        mockMvc.perform(get("/unexpected").header(HttpHeaders.AUTHORIZATION, bearer()))
+                .andExpect(status().isNotFound());
     }
 }

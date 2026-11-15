@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.jdbc.JdbcTestUtils;
@@ -16,16 +15,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
 import javax.sql.DataSource;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Not @Transactional: the registration has to be committed for the metrics to be worth reading,
-// and the actuator endpoints are read over http like a scraper would.
 @SpringBootTest
 @AutoConfigureMockMvc
 class ActuatorIntegrationTest {
@@ -36,7 +31,6 @@ class ActuatorIntegrationTest {
     @Autowired
     private DataSource dataSource;
 
-    // The registration is committed, so it has to go before the next test class.
     @AfterEach
     void clearRegisteredRows() {
         JdbcTestUtils.deleteFromTables(new JdbcTemplate(dataSource),
@@ -79,16 +73,19 @@ class ActuatorIntegrationTest {
                 "no pre-registered trainee counter");
         Assertions.assertTrue(scrape.contains("gymcrm_logins_total{application=\"gym-crm\",outcome=\"success\"}"),
                 "no pre-registered login counter");
+        Assertions.assertTrue(scrape.contains("gymcrm_logins_total{application=\"gym-crm\",outcome=\"locked\"}"),
+                "no pre-registered lockout counter");
     }
 
     @Test
     @DisplayName("a registration and a login show up in the scrape")
     void countsRegistrationAndLogin() throws Exception {
         RegistrationResponse registered = registerTrainee();
-        String credentials = "Basic " + Base64.getEncoder().encodeToString(
-                (registered.username() + ":" + registered.password()).getBytes(StandardCharsets.UTF_8));
 
-        mockMvc.perform(get("/auth/login").header(HttpHeaders.AUTHORIZATION, credentials))
+        mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + registered.username() + "\""
+                                + ",\"password\":\"" + registered.password() + "\"}"))
                 .andExpect(status().isOk());
 
         String scrape = prometheus();

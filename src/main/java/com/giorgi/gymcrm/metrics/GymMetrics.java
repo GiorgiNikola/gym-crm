@@ -5,8 +5,6 @@ import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 
-// The only place meter names and tag values live. Tags stay low cardinality on purpose:
-// a username in a tag would create one time series per user.
 @Component
 public class GymMetrics {
 
@@ -19,17 +17,21 @@ public class GymMetrics {
     private static final String TRAINER = "trainer";
     private static final String SUCCESS = "success";
     private static final String FAILURE = "failure";
+    private static final String LOCKED = "locked";
 
     private final MeterRegistry registry;
 
     public GymMetrics(MeterRegistry registry) {
         this.registry = registry;
+        preRegisterEverySeriesAtZero();
+    }
 
-        // Touch every series once so a scrape sees them at 0 instead of not at all.
+    private void preRegisterEverySeriesAtZero() {
         registrations(TRAINEE);
         registrations(TRAINER);
         logins(SUCCESS);
         logins(FAILURE);
+        logins(LOCKED);
         trainingsAdded();
         trainingDuration();
     }
@@ -50,6 +52,10 @@ public class GymMetrics {
         logins(FAILURE).increment();
     }
 
+    public void loginLocked() {
+        logins(LOCKED).increment();
+    }
+
     public void trainingAdded(long durationMinutes) {
         trainingsAdded().increment();
         trainingDuration().record(durationMinutes);
@@ -64,7 +70,7 @@ public class GymMetrics {
 
     private Counter logins(String outcome) {
         return Counter.builder(LOGINS)
-                .description("Authentication attempts")
+                .description("Login attempts")
                 .tag("outcome", outcome)
                 .register(registry);
     }

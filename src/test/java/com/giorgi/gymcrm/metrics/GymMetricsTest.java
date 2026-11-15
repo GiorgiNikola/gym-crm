@@ -21,6 +21,7 @@ class GymMetricsTest {
         Assertions.assertEquals(0, counter(GymMetrics.REGISTRATIONS, "role", "trainer"));
         Assertions.assertEquals(0, counter(GymMetrics.LOGINS, "outcome", "success"));
         Assertions.assertEquals(0, counter(GymMetrics.LOGINS, "outcome", "failure"));
+        Assertions.assertEquals(0, counter(GymMetrics.LOGINS, "outcome", "locked"));
         Assertions.assertEquals(0, registry.get(GymMetrics.TRAININGS_ADDED).counter().count());
         Assertions.assertEquals(0, registry.get(GymMetrics.TRAINING_DURATION).summary().count());
     }
@@ -49,9 +50,27 @@ class GymMetricsTest {
         gymMetrics.loginSucceeded();
         gymMetrics.loginFailed();
         gymMetrics.loginFailed();
+        gymMetrics.loginLocked();
 
         Assertions.assertEquals(1, counter(GymMetrics.LOGINS, "outcome", "success"));
         Assertions.assertEquals(2, counter(GymMetrics.LOGINS, "outcome", "failure"));
+        Assertions.assertEquals(1, counter(GymMetrics.LOGINS, "outcome", "locked"));
+    }
+
+    @Test
+    @DisplayName("an attempt against a locked username counts as locked and not as a failure")
+    void keepsLockedApartFromFailure() {
+        gymMetrics.loginLocked();
+
+        Assertions.assertEquals(1, counter(GymMetrics.LOGINS, "outcome", "locked"));
+        Assertions.assertEquals(0, counter(GymMetrics.LOGINS, "outcome", "failure"));
+    }
+
+    @Test
+    @DisplayName("the login counter describes login attempts, not every authenticated call")
+    void describesLoginAttempts() {
+        Assertions.assertEquals("Login attempts",
+                registry.get(GymMetrics.LOGINS).tag("outcome", "success").counter().getId().getDescription());
     }
 
     @Test

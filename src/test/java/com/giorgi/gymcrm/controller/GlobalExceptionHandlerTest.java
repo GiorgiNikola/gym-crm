@@ -1,19 +1,26 @@
 package com.giorgi.gymcrm.controller;
 
-import com.giorgi.gymcrm.exception.AuthenticationException;
+import com.giorgi.gymcrm.exception.LoginLockedException;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.exception.StateConflictException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -32,11 +39,32 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("a failed login becomes a 401")
+    @DisplayName("a failed login becomes a 401 with a message that gives nothing away")
     void mapsAuthenticationToUnauthorized() throws Exception {
-        mockMvc.perform(get("/authentication"))
+        MvcResult result = mockMvc.perform(get("/authentication"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.detail").value("Wrong username or password"));
+                .andExpect(jsonPath("$.detail").value("Invalid username or password"))
+                .andReturn();
+
+        Assertions.assertFalse(result.getResponse().getContentAsString().contains("no such user"));
+    }
+
+    @Test
+    @DisplayName("a denied authorization becomes a 403 and not a 500")
+    void mapsAccessDeniedToForbidden() throws Exception {
+        mockMvc.perform(get("/access-denied"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.detail").value("Access to this resource is denied"));
+    }
+
+    @Test
+    @DisplayName("a locked username becomes a 429 that says how long to wait")
+    void mapsLoginLockedToTooManyRequests() throws Exception {
+        mockMvc.perform(get("/login-locked"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "120"))
+                .andExpect(jsonPath("$.detail").value("Too many failed login attempts. Try again in 120 seconds"));
     }
 
     @Test
@@ -77,8 +105,6 @@ class GlobalExceptionHandlerTest {
         Assertions.assertFalse(result.getResponse().getContentAsString().contains("connection pool exhausted"));
     }
 
-    // Deliberately an inner class, not a static one: the component scan in WebConfig would
-    // otherwise pick this controller up and expose these paths in WebContextTest.
     @RestController
     class ThrowingController {
 
@@ -89,7 +115,17 @@ class GlobalExceptionHandlerTest {
 
         @GetMapping("/authentication")
         void authentication() {
-            throw new AuthenticationException("Wrong username or password");
+            throw new BadCredentialsException("no such user");
+        }
+
+        @GetMapping("/access-denied")
+        void accessDenied() {
+            throw new AuthorizationDeniedException("Access Denied", new AuthorizationDecision(false));
+        }
+
+        @GetMapping("/login-locked")
+        void loginLocked() {
+            throw new LoginLockedException(Duration.ofMinutes(2));
         }
 
         @GetMapping("/profile-not-found")

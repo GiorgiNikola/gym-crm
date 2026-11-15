@@ -24,7 +24,6 @@ class DatabaseLatencyHealthIndicatorTest {
     @Mock
     private JdbcTemplate jdbcTemplate;
 
-    // Two readings per health() call, so the latency is whatever the test says it is.
     private LongSupplier clockTaking(long millis) {
         return new LongSupplier() {
             private int reading;

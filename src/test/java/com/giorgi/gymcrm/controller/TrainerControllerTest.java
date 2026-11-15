@@ -1,12 +1,12 @@
 package com.giorgi.gymcrm.controller;
 
 import com.giorgi.gymcrm.facade.GymCrmFacade;
+import com.giorgi.gymcrm.facade.RegisteredProfile;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
-import com.giorgi.gymcrm.web.BasicCredentialsResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,14 +19,11 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
 
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -41,6 +38,7 @@ class TrainerControllerTest {
 
     private static final String USERNAME = "Sarah.Miller";
     private static final String PASSWORD = "bY8lR3nO0q";
+    private static final String TOKEN = "a.signed.token";
 
     @Mock
     private GymCrmFacade gymCrmFacade;
@@ -50,14 +48,8 @@ class TrainerControllerTest {
     @BeforeEach
     void buildMockMvc() {
         mockMvc = MockMvcBuilders.standaloneSetup(new TrainerController(gymCrmFacade))
-                .setCustomArgumentResolvers(new BasicCredentialsResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
-    }
-
-    private String basic(String username, String password) {
-        return "Basic " + Base64.getEncoder()
-                .encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
     }
 
     private Trainee trainee(String firstName, String lastName) {
@@ -90,12 +82,10 @@ class TrainerControllerTest {
     }
 
     @Test
-    @DisplayName("a registered trainer comes back as 201 with credentials and a location")
+    @DisplayName("a registered trainer comes back as 201 with credentials, a token and a location")
     void registersTrainer() throws Exception {
-        Trainer trainer = Trainer.builder()
-                .user(User.builder().username(USERNAME).password(PASSWORD).build())
-                .build();
-        when(gymCrmFacade.createTrainerProfile("Sarah", "Miller", "YOGA")).thenReturn(trainer);
+        when(gymCrmFacade.createTrainerProfile("Sarah", "Miller", "YOGA"))
+                .thenReturn(new RegisteredProfile(USERNAME, PASSWORD, TOKEN));
 
         mockMvc.perform(post("/trainers")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -103,7 +93,8 @@ class TrainerControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(header().string(HttpHeaders.LOCATION, "http://localhost/trainers/Sarah.Miller"))
                 .andExpect(jsonPath("$.username").value(USERNAME))
-                .andExpect(jsonPath("$.password").value(PASSWORD));
+                .andExpect(jsonPath("$.password").value(PASSWORD))
+                .andExpect(jsonPath("$.token").value(TOKEN));
     }
 
     @Test
@@ -135,10 +126,9 @@ class TrainerControllerTest {
     @Test
     @DisplayName("a trainer profile comes back with its trainees sorted by username")
     void returnsProfileWithTrainees() throws Exception {
-        when(gymCrmFacade.selectTrainerProfile(USERNAME, PASSWORD)).thenReturn(sarahWithTrainees());
+        when(gymCrmFacade.selectTrainerProfile(USERNAME)).thenReturn(sarahWithTrainees());
 
-        mockMvc.perform(get("/trainers/{username}", USERNAME)
-                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD)))
+        mockMvc.perform(get("/trainers/{username}", USERNAME))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value(USERNAME))
                 .andExpect(jsonPath("$.specialization").value("YOGA"))
@@ -151,11 +141,10 @@ class TrainerControllerTest {
     @Test
     @DisplayName("an update comes back as the updated profile")
     void updatesProfile() throws Exception {
-        when(gymCrmFacade.updateTrainerProfile(USERNAME, PASSWORD, "Sara", "Millerson", false))
+        when(gymCrmFacade.updateTrainerProfile(USERNAME, "Sara", "Millerson", false))
                 .thenReturn(sarahWithTrainees());
 
         mockMvc.perform(put("/trainers/{username}", USERNAME)
-                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"firstName\":\"Sara\",\"lastName\":\"Millerson\",\"isActive\":false}"))
                 .andExpect(status().isOk())
@@ -166,11 +155,10 @@ class TrainerControllerTest {
     @Test
     @DisplayName("a specialization sent in an update body is ignored")
     void ignoresSpecializationInUpdateBody() throws Exception {
-        when(gymCrmFacade.updateTrainerProfile(USERNAME, PASSWORD, "Sarah", "Miller", true))
+        when(gymCrmFacade.updateTrainerProfile(USERNAME, "Sarah", "Miller", true))
                 .thenReturn(sarahWithTrainees());
 
         mockMvc.perform(put("/trainers/{username}", USERNAME)
-                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"firstName":"Sarah","lastName":"Miller","isActive":true,
@@ -178,7 +166,7 @@ class TrainerControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.specialization").value("YOGA"));
 
-        verify(gymCrmFacade).updateTrainerProfile(USERNAME, PASSWORD, "Sarah", "Miller", true);
+        verify(gymCrmFacade).updateTrainerProfile(USERNAME, "Sarah", "Miller", true);
         verifyNoMoreInteractions(gymCrmFacade);
     }
 
@@ -186,28 +174,10 @@ class TrainerControllerTest {
     @DisplayName("an update without isActive comes back as 400 and names the field")
     void rejectsUpdateWithoutActiveFlag() throws Exception {
         mockMvc.perform(put("/trainers/{username}", USERNAME)
-                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"firstName\":\"Sarah\",\"lastName\":\"Miller\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.isActive").exists());
-    }
-
-    @Test
-    @DisplayName("reading somebody else's profile comes back as 403")
-    void rejectsOtherUsersProfile() throws Exception {
-        mockMvc.perform(get("/trainers/{username}", "John.Smith")
-                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD)))
-                .andExpect(status().isForbidden());
-
-        verifyNoInteractions(gymCrmFacade);
-    }
-
-    @Test
-    @DisplayName("reading a profile without credentials comes back as 401")
-    void rejectsProfileWithoutCredentials() throws Exception {
-        mockMvc.perform(get("/trainers/{username}", USERNAME))
-                .andExpect(status().isUnauthorized());
     }
 
     private Training training(String name, LocalDate date) {
@@ -226,11 +196,10 @@ class TrainerControllerTest {
     @Test
     @DisplayName("the trainings come back with the trainee and the type")
     void listsTrainings() throws Exception {
-        when(gymCrmFacade.getTrainerTrainings(USERNAME, PASSWORD, null, null, null))
+        when(gymCrmFacade.getTrainerTrainings(USERNAME, null, null, null))
                 .thenReturn(List.of(training("Morning Yoga", LocalDate.of(2026, 8, 1))));
 
-        mockMvc.perform(get("/trainers/{username}/trainings", USERNAME)
-                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD)))
+        mockMvc.perform(get("/trainers/{username}/trainings", USERNAME))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].trainingName").value("Morning Yoga"))
@@ -244,35 +213,18 @@ class TrainerControllerTest {
     @Test
     @DisplayName("every training filter reaches the facade, dates included")
     void passesTrainingFiltersToTheFacade() throws Exception {
-        when(gymCrmFacade.getTrainerTrainings(USERNAME, PASSWORD,
+        when(gymCrmFacade.getTrainerTrainings(USERNAME,
                 LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), "Smith"))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/trainers/{username}/trainings", USERNAME)
-                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD))
                         .param("from", "2026-08-01")
                         .param("to", "2026-08-31")
                         .param("traineeName", "Smith"))
                 .andExpect(status().isOk());
 
-        verify(gymCrmFacade).getTrainerTrainings(USERNAME, PASSWORD,
+        verify(gymCrmFacade).getTrainerTrainings(USERNAME,
                 LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), "Smith");
     }
 
-    @Test
-    @DisplayName("reading somebody else's trainings comes back as 403")
-    void rejectsTrainingsForOtherUser() throws Exception {
-        mockMvc.perform(get("/trainers/{username}/trainings", "John.Smith")
-                        .header(HttpHeaders.AUTHORIZATION, basic(USERNAME, PASSWORD)))
-                .andExpect(status().isForbidden());
-
-        verifyNoInteractions(gymCrmFacade);
-    }
-
-    @Test
-    @DisplayName("reading trainings without credentials comes back as 401")
-    void rejectsTrainingsWithoutCredentials() throws Exception {
-        mockMvc.perform(get("/trainers/{username}/trainings", USERNAME))
-                .andExpect(status().isUnauthorized());
-    }
 }

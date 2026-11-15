@@ -103,7 +103,6 @@ public class TrainingDaoImpl implements TrainingDao {
         return entityManager.createQuery(query).getResultList();
     }
 
-    // Matches the first name, the last name, or the two together, case insensitive and partial.
     private Predicate nameMatches(CriteriaBuilder cb, Path<User> user, String value) {
         Expression<String> firstName = cb.lower(user.get("firstName"));
         Expression<String> lastName = cb.lower(user.get("lastName"));

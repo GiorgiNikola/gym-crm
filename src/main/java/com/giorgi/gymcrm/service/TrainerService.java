@@ -6,9 +6,7 @@ import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
-import com.giorgi.gymcrm.util.CredentialGenerator;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,80 +16,48 @@ import static com.giorgi.gymcrm.util.Validations.requireText;
 @Service
 public class TrainerService {
 
-    private TrainerDao trainerDao;
-    private TrainingTypeService trainingTypeService;
-    private AuthenticationService authenticationService;
-    private GymMetrics gymMetrics;
-    private UsernameResolver usernameResolver;
-    private CredentialGenerator credentialGenerator;
+    private final TrainerDao trainerDao;
+    private final TrainingTypeService trainingTypeService;
+    private final GymMetrics gymMetrics;
+    private final UserFactory userFactory;
 
-    @Autowired
-    public void setTrainerDao(TrainerDao trainerDao) {
+    public TrainerService(TrainerDao trainerDao,
+                          TrainingTypeService trainingTypeService,
+                          GymMetrics gymMetrics,
+                          UserFactory userFactory) {
         this.trainerDao = trainerDao;
-    }
-
-    @Autowired
-    public void setTrainingTypeService(TrainingTypeService trainingTypeService) {
         this.trainingTypeService = trainingTypeService;
-    }
-
-    @Autowired
-    public void setAuthenticationService(AuthenticationService authenticationService) {
-        this.authenticationService = authenticationService;
-    }
-
-    @Autowired
-    public void setGymMetrics(GymMetrics gymMetrics) {
         this.gymMetrics = gymMetrics;
-    }
-
-    @Autowired
-    public void setUsernameResolver(UsernameResolver usernameResolver) {
-        this.usernameResolver = usernameResolver;
-    }
-
-    @Autowired
-    public void setCredentialGenerator(CredentialGenerator credentialGenerator) {
-        this.credentialGenerator = credentialGenerator;
+        this.userFactory = userFactory;
     }
 
     @Transactional
-    public Trainer createProfile(String firstName, String lastName, String specializationName) {
+    public NewUser createProfile(String firstName, String lastName, String specializationName) {
         requireText(firstName, "First name");
         requireText(lastName, "Last name");
         requireText(specializationName, "Specialization");
 
         TrainingType specialization = trainingTypeService.requireByName(specializationName);
 
-        User user = User.builder()
-                .firstName(firstName)
-                .lastName(lastName)
-                .username(usernameResolver.generateUsername(firstName, lastName))
-                .password(credentialGenerator.generatePassword())
-                .isActive(true)
-                .build();
-
+        NewUser created = userFactory.create(firstName, lastName);
         Trainer trainer = Trainer.builder()
-                .user(user)
+                .user(created.user())
                 .specialization(specialization)
                 .build();
 
         trainerDao.save(trainer);
         gymMetrics.trainerRegistered();
-        log.info("Created trainer profile with username: {}", user.getUsername());
-        return trainer;
+        log.info("Created trainer profile with username: {}", created.user().getUsername());
+        return created;
     }
 
     @Transactional(readOnly = true)
-    public Trainer selectByUsername(String username, String password) {
-        authenticationService.authenticate(username, password);
+    public Trainer selectByUsername(String username) {
         return findProfileOrThrow(username);
     }
 
     @Transactional
-    public Trainer updateProfile(String username, String password,
-                                 String firstName, String lastName, boolean isActive) {
-        authenticationService.authenticate(username, password);
+    public Trainer updateProfile(String username, String firstName, String lastName, boolean isActive) {
         requireText(firstName, "First name");
         requireText(lastName, "Last name");
 

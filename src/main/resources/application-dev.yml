@@ -23,3 +23,12 @@ management:
   endpoint:
     health:
       show-details: always
+
+gymcrm:
+  jwt:
+    # Development only, and obviously so. JWT_SECRET overrides it.
+    secret: ${JWT_SECRET:local-development-only-secret-change-me-0123456789}
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+      - http://localhost:4200

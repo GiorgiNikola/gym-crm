@@ -11,8 +11,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// Read only: the docs are generated from the annotations, so nothing is written and there is
-// nothing to clean up afterwards.
 @SpringBootTest
 @AutoConfigureMockMvc
 class ApiDocsIntegrationTest {
@@ -34,18 +32,28 @@ class ApiDocsIntegrationTest {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/trainees'].post").exists())
+                .andExpect(jsonPath("$.paths['/auth/login'].post").exists())
                 .andExpect(jsonPath("$.paths['/trainees/{username}'].get").exists())
                 .andExpect(jsonPath("$.paths['/training-types'].get").exists())
                 .andExpect(jsonPath("$.paths['/trainings'].post").exists());
     }
 
     @Test
-    @DisplayName("basic auth is declared as a security scheme")
-    void declaresBasicAuthScheme() throws Exception {
+    @DisplayName("the bearer token is declared as the security scheme")
+    void declaresBearerScheme() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.components.securitySchemes.basicAuth.type").value("http"))
-                .andExpect(jsonPath("$.components.securitySchemes.basicAuth.scheme").value("basic"));
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.type").value("http"))
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.bearerFormat").value("JWT"));
+    }
+
+    @Test
+    @DisplayName("the old basic auth scheme is gone")
+    void dropsTheBasicScheme() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.securitySchemes.basicAuth").doesNotExist());
     }
 
     @Test
@@ -53,14 +61,15 @@ class ApiDocsIntegrationTest {
     void marksSecuredEndpoints() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.paths['/training-types'].get.security[0].basicAuth").exists())
-                .andExpect(jsonPath("$.paths['/trainees/{username}'].get.security[0].basicAuth").exists())
-                .andExpect(jsonPath("$.paths['/trainees'].post.security").doesNotExist());
+                .andExpect(jsonPath("$.paths['/training-types'].get.security[0].bearerAuth").exists())
+                .andExpect(jsonPath("$.paths['/trainees/{username}'].get.security[0].bearerAuth").exists())
+                .andExpect(jsonPath("$.paths['/trainees'].post.security").doesNotExist())
+                .andExpect(jsonPath("$.paths['/auth/login'].post.security").doesNotExist());
     }
 
     @Test
-    @DisplayName("the hidden credentials parameter stays out of the spec")
-    void hidesTheCredentialsParameter() throws Exception {
+    @DisplayName("a path with a username documents that one parameter and nothing else")
+    void documentsOnlyThePathParameter() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paths['/trainees/{username}'].get.parameters.length()").value(1))

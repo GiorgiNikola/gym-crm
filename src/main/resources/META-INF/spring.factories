@@ -1,2 +1,3 @@
 org.springframework.boot.EnvironmentPostProcessor=\
-com.giorgi.gymcrm.config.RequiredDatabaseUrlProcessor
+com.giorgi.gymcrm.config.RequiredDatabaseUrlProcessor,\
+com.giorgi.gymcrm.config.RequiredJwtSecretProcessor

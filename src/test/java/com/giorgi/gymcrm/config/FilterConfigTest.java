@@ -14,6 +14,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.web.servlet.ServletContextInitializerBeans;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.core.Ordered;
+import org.springframework.web.filter.DelegatingFilterProxy;
 import org.springframework.web.filter.CharacterEncodingFilter;
 
 import java.util.List;
@@ -32,7 +33,6 @@ class FilterConfigTest {
     @Autowired
     private FilterRegistrationBean<RequestLoggingFilter> requestLoggingFilter;
 
-    // The filters in the order Boot hands them to the servlet container.
     private List<Filter> registeredFilters() {
         return new ServletContextInitializerBeans(beanFactory).stream()
                 .filter(AbstractFilterRegistrationBean.class::isInstance)
@@ -57,7 +57,6 @@ class FilterConfigTest {
         return Assertions.fail(type.getSimpleName() + " is not registered: " + filters);
     }
 
-    // Boot slots its own filters in between, so the positions matter only relative to each other.
     @Test
     @DisplayName("encoding runs first, then the transaction id, then the request log")
     void runsEncodingThenTransactionIdThenRequestLogging() {
@@ -80,5 +79,24 @@ class FilterConfigTest {
     void ordersOurFiltersAfterEncoding() {
         Assertions.assertEquals(Ordered.HIGHEST_PRECEDENCE + 1, transactionIdFilter.getOrder());
         Assertions.assertEquals(Ordered.HIGHEST_PRECEDENCE + 2, requestLoggingFilter.getOrder());
+    }
+
+    @Test
+    @DisplayName("both of our filters run before the spring security chain")
+    void runsOurFiltersBeforeSecurity() {
+        Assertions.assertTrue(positionOf(TransactionIdFilter.class) < positionOf(DelegatingFilterProxy.class),
+                registeredFilters().toString());
+        Assertions.assertTrue(positionOf(RequestLoggingFilter.class) < positionOf(DelegatingFilterProxy.class),
+                registeredFilters().toString());
+    }
+
+    @Test
+    @DisplayName("the security chain reaches the container as exactly one servlet filter")
+    void registersTheSecurityChainOnce() {
+        long occurrences = registeredFilters().stream()
+                .filter(DelegatingFilterProxy.class::isInstance)
+                .count();
+
+        Assertions.assertEquals(1, occurrences, registeredFilters().toString());
     }
 }

@@ -1,6 +1,5 @@
 package com.giorgi.gymcrm.service;
 
-import com.giorgi.gymcrm.model.Trainee;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Assertions;
@@ -25,7 +24,7 @@ class UsernameLengthTest {
     @Autowired
     private TraineeService traineeService;
 
-    private Trainee register() {
+    private NewUser register() {
         return traineeService.createProfile(
                 LONG_FIRST_NAME, LONG_LAST_NAME, LocalDate.of(1998, 5, 14), "123 Main St New York");
     }
@@ -33,8 +32,8 @@ class UsernameLengthTest {
     @Test
     @DisplayName("two trainees with the longest allowed names both get a username that fits the column")
     void storesLongUsernamesWithCollisionSuffix() {
-        String first = register().getUser().getUsername();
-        String second = register().getUser().getUsername();
+        String first = register().user().getUsername();
+        String second = register().user().getUsername();
         entityManager.flush();
 
         Assertions.assertEquals(LONG_FIRST_NAME + "." + LONG_LAST_NAME, first);

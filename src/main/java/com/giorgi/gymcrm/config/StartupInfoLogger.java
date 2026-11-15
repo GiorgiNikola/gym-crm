@@ -16,7 +16,6 @@ public class StartupInfoLogger {
         this.environment = environment;
     }
 
-    // The URL only: the username and the password are separate properties and stay out of the log.
     @EventListener(ApplicationReadyEvent.class)
     public void logDatabaseTarget() {
         log.info("Started with profile(s) {} talking to {}",

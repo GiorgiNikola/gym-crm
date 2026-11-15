@@ -2,9 +2,7 @@ package com.giorgi.gymcrm.controller;
 
 import com.giorgi.gymcrm.dto.TrainingTypeResponse;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
-import com.giorgi.gymcrm.web.Credentials;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -27,14 +25,14 @@ public class TrainingTypeController {
     }
 
     @GetMapping
-    @SecurityRequirement(name = "basicAuth")
+    @SecurityRequirement(name = "bearerAuth")
     @Operation(summary = "Lists every training type")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "The training types"),
-            @ApiResponse(responseCode = "401", description = "The credentials are missing, malformed or wrong")
+            @ApiResponse(responseCode = "401", description = "The token is missing or invalid")
     })
-    public List<TrainingTypeResponse> getTrainingTypes(@Parameter(hidden = true) Credentials credentials) {
-        return gymCrmFacade.getTrainingTypes(credentials.username(), credentials.password()).stream()
+    public List<TrainingTypeResponse> getTrainingTypes() {
+        return gymCrmFacade.getTrainingTypes().stream()
                 .map(TrainingTypeResponse::from)
                 .toList();
     }

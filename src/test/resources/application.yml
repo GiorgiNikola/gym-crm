@@ -19,6 +19,20 @@ spring:
     resources:
       add-mappings: false
 
+# Fixed so a token minted in one test is readable in the next, and long enough for HS256.
+# The cors origins are the ones the security integration test sends Origin headers from.
+gymcrm:
+  jwt:
+    secret: test-only-signing-secret-0123456789abcdef
+    ttl: 1h
+  security:
+    max-login-attempts: 3
+    lock-duration: 5m
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+      - http://localhost:4200
+
 # the integration test reads /actuator/health and /actuator/prometheus
 management:
   endpoints:

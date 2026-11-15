@@ -48,9 +48,6 @@ class TrainingServiceTest {
     private TrainingTypeService trainingTypeService;
 
     @Mock
-    private AuthenticationService authenticationService;
-
-    @Mock
     private GymMetrics gymMetrics;
 
     @InjectMocks
@@ -88,8 +85,7 @@ class TrainingServiceTest {
         when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
         when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
 
-        trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
-                "Morning Yoga", DATE, 60L);
+        trainingService.addTraining("John.Smith", "Sarah.Miller", "Morning Yoga", DATE, 60L);
 
         ArgumentCaptor<Training> captor = ArgumentCaptor.forClass(Training.class);
         verify(trainingDao).save(captor.capture());
@@ -109,8 +105,7 @@ class TrainingServiceTest {
         when(traineeDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
 
         Assertions.assertThrows(ProfileNotFoundException.class,
-                () -> trainingService.addTraining("John.Smith", PASSWORD, "Nobody.Here", "Sarah.Miller",
-                        "Morning Yoga", DATE, 60L));
+                () -> trainingService.addTraining("Nobody.Here", "Sarah.Miller", "Morning Yoga", DATE, 60L));
 
         verifyNoInteractions(trainingDao);
     }
@@ -122,8 +117,7 @@ class TrainingServiceTest {
         when(trainerDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
 
         Assertions.assertThrows(ProfileNotFoundException.class,
-                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Nobody.Here",
-                        "Morning Yoga", DATE, 60L));
+                () -> trainingService.addTraining("John.Smith", "Nobody.Here", "Morning Yoga", DATE, 60L));
 
         verifyNoInteractions(trainingDao);
     }
@@ -132,8 +126,7 @@ class TrainingServiceTest {
     @DisplayName("addTraining rejects a null date")
     void rejectsNullDate() {
         Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
-                        "Morning Yoga", null, 60L));
+                () -> trainingService.addTraining("John.Smith", "Sarah.Miller", "Morning Yoga", null, 60L));
 
         verifyNoInteractions(trainingDao);
     }
@@ -144,8 +137,7 @@ class TrainingServiceTest {
     @DisplayName("addTraining rejects a duration that is not positive")
     void rejectsInvalidDuration(Long duration) {
         Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
-                        "Morning Yoga", DATE, duration));
+                () -> trainingService.addTraining("John.Smith", "Sarah.Miller", "Morning Yoga", DATE, duration));
 
         verifyNoInteractions(trainingDao);
     }
@@ -156,11 +148,9 @@ class TrainingServiceTest {
         List<Training> expected = List.of(Training.builder().id(1L).name("Morning Yoga").build());
         when(trainingDao.findTraineeTrainings("John.Smith", DATE, DATE, "Sarah", "YOGA")).thenReturn(expected);
 
-        List<Training> trainings = trainingService.getTraineeTrainings(
-                "John.Smith", PASSWORD, DATE, DATE, "Sarah", "YOGA");
+        List<Training> trainings = trainingService.getTraineeTrainings("John.Smith", DATE, DATE, "Sarah", "YOGA");
 
         Assertions.assertSame(expected, trainings);
-        verify(authenticationService).authenticate("John.Smith", PASSWORD);
     }
 
     @Test
@@ -169,17 +159,15 @@ class TrainingServiceTest {
         List<Training> expected = List.of(Training.builder().id(1L).name("Morning Yoga").build());
         when(trainingDao.findTrainerTrainings("Sarah.Miller", DATE, DATE, "John")).thenReturn(expected);
 
-        List<Training> trainings = trainingService.getTrainerTrainings(
-                "Sarah.Miller", PASSWORD, DATE, DATE, "John");
+        List<Training> trainings = trainingService.getTrainerTrainings("Sarah.Miller", DATE, DATE, "John");
 
         Assertions.assertSame(expected, trainings);
-        verify(authenticationService).authenticate("Sarah.Miller", PASSWORD);
     }
 
     @Test
     @DisplayName("getTraineeTrainings works without any filter")
     void acceptsMissingTraineeFilters() {
-        trainingService.getTraineeTrainings("John.Smith", PASSWORD, null, null, null, null);
+        trainingService.getTraineeTrainings("John.Smith", null, null, null, null);
 
         verify(trainingDao).findTraineeTrainings("John.Smith", null, null, null, null);
         verifyNoInteractions(trainingTypeService);
@@ -188,7 +176,7 @@ class TrainingServiceTest {
     @Test
     @DisplayName("getTraineeTrainings accepts a range with no end")
     void acceptsOpenEndedRange() {
-        trainingService.getTraineeTrainings("John.Smith", PASSWORD, DATE, null, null, null);
+        trainingService.getTraineeTrainings("John.Smith", DATE, null, null, null);
 
         verify(trainingDao).findTraineeTrainings("John.Smith", DATE, null, null, null);
     }
@@ -196,7 +184,7 @@ class TrainingServiceTest {
     @Test
     @DisplayName("a blank training type filter is passed along without a lookup")
     void ignoresBlankTypeFilter() {
-        trainingService.getTraineeTrainings("John.Smith", PASSWORD, null, null, null, "  ");
+        trainingService.getTraineeTrainings("John.Smith", null, null, null, "  ");
 
         verify(trainingDao).findTraineeTrainings("John.Smith", null, null, null, "  ");
         verifyNoInteractions(trainingTypeService);
@@ -206,8 +194,7 @@ class TrainingServiceTest {
     @DisplayName("getTraineeTrainings rejects a from date after the to date")
     void rejectsReversedTraineeRange() {
         Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.getTraineeTrainings("John.Smith", PASSWORD,
-                        DATE.plusDays(1), DATE, null, null));
+                () -> trainingService.getTraineeTrainings("John.Smith", DATE.plusDays(1), DATE, null, null));
 
         verifyNoInteractions(trainingDao);
     }
@@ -216,8 +203,7 @@ class TrainingServiceTest {
     @DisplayName("getTrainerTrainings rejects a from date after the to date")
     void rejectsReversedTrainerRange() {
         Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.getTrainerTrainings("Sarah.Miller", PASSWORD,
-                        DATE.plusDays(1), DATE, null));
+                () -> trainingService.getTrainerTrainings("Sarah.Miller", DATE.plusDays(1), DATE, null));
 
         verifyNoInteractions(trainingDao);
     }
@@ -229,7 +215,7 @@ class TrainingServiceTest {
                 "Unknown training type: PILATES. Valid values: FITNESS, YOGA"));
 
         IllegalArgumentException thrown = Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.getTraineeTrainings("John.Smith", PASSWORD, null, null, null, "PILATES"));
+                () -> trainingService.getTraineeTrainings("John.Smith", null, null, null, "PILATES"));
 
         Assertions.assertEquals("Unknown training type: PILATES. Valid values: FITNESS, YOGA",
                 thrown.getMessage());
@@ -242,8 +228,7 @@ class TrainingServiceTest {
         when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john()));
         when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah(trainingType(2L))));
 
-        trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
-                "Morning Yoga", DATE, 60L);
+        trainingService.addTraining("John.Smith", "Sarah.Miller", "Morning Yoga", DATE, 60L);
 
         verify(gymMetrics).trainingAdded(60L);
     }
@@ -252,8 +237,7 @@ class TrainingServiceTest {
     @DisplayName("a rejected training is not counted")
     void doesNotCountRejectedTraining() {
         Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainingService.addTraining("John.Smith", PASSWORD, "John.Smith", "Sarah.Miller",
-                        "Morning Yoga", DATE, 0L));
+                () -> trainingService.addTraining("John.Smith", "Sarah.Miller", "Morning Yoga", DATE, 0L));
 
         verifyNoInteractions(gymMetrics);
     }

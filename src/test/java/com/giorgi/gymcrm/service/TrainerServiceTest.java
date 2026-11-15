@@ -1,13 +1,11 @@
 package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.dao.TrainerDao;
-import com.giorgi.gymcrm.exception.AuthenticationException;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
-import com.giorgi.gymcrm.util.CredentialGenerator;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,9 +17,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.Mockito.*;
@@ -29,7 +25,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class TrainerServiceTest {
 
-    private static final String PASSWORD = "Hj2wE8rT4y";
+    private static final String RAW_PASSWORD = "Hj2wE8rT4y";
+    private static final String HASH = "$2a$10$abcdefghijklmnopqrstuv";
 
     @Mock
     private TrainerDao trainerDao;
@@ -38,13 +35,7 @@ class TrainerServiceTest {
     private TrainingTypeService trainingTypeService;
 
     @Mock
-    private AuthenticationService authenticationService;
-
-    @Mock
-    private UsernameResolver usernameResolver;
-
-    @Mock
-    private CredentialGenerator credentialGenerator;
+    private UserFactory userFactory;
 
     @Mock
     private GymMetrics gymMetrics;
@@ -52,19 +43,13 @@ class TrainerServiceTest {
     @InjectMocks
     private TrainerService trainerService;
 
-    private TrainingType trainingType(String name) {
-        TrainingType type = new TrainingType();
-        ReflectionTestUtils.setField(type, "name", name);
-        return type;
-    }
-
     private Trainer sarah(boolean active) {
         User user = User.builder()
                 .id(1L)
                 .firstName("Sarah")
                 .lastName("Miller")
                 .username("Sarah.Miller")
-                .password(PASSWORD)
+                .password(HASH)
                 .isActive(active)
                 .build();
         return Trainer.builder()
@@ -74,26 +59,28 @@ class TrainerServiceTest {
                 .build();
     }
 
+    private NewUser newSarah() {
+        return new NewUser(sarah(true).getUser(), RAW_PASSWORD);
+    }
+
     @Test
-    @DisplayName("createProfile builds the trainer with a resolved username and generated password")
+    @DisplayName("createProfile attaches the user the factory built and the resolved specialization")
     void savesTrainerWithGeneratedCredentials() {
         TrainingType yoga = new TrainingType();
         when(trainingTypeService.requireByName("YOGA")).thenReturn(yoga);
-        when(usernameResolver.generateUsername("Sarah", "Miller")).thenReturn("Sarah.Miller");
-        when(credentialGenerator.generatePassword()).thenReturn(PASSWORD);
+        when(userFactory.create("Sarah", "Miller")).thenReturn(newSarah());
 
-        trainerService.createProfile("Sarah", "Miller", "YOGA");
+        NewUser created = trainerService.createProfile("Sarah", "Miller", "YOGA");
 
         ArgumentCaptor<Trainer> captor = ArgumentCaptor.forClass(Trainer.class);
         verify(trainerDao).save(captor.capture());
         Trainer saved = captor.getValue();
 
         Assertions.assertEquals("Sarah.Miller", saved.getUser().getUsername());
-        Assertions.assertEquals(PASSWORD, saved.getUser().getPassword());
+        Assertions.assertEquals(HASH, saved.getUser().getPassword());
         Assertions.assertTrue(saved.getUser().isActive());
-        Assertions.assertEquals("Sarah", saved.getUser().getFirstName());
-        Assertions.assertEquals("Miller", saved.getUser().getLastName());
         Assertions.assertSame(yoga, saved.getSpecialization());
+        Assertions.assertEquals(RAW_PASSWORD, created.rawPassword());
     }
 
     @ParameterizedTest
@@ -144,15 +131,12 @@ class TrainerServiceTest {
     }
 
     @Test
-    @DisplayName("selectByUsername authenticates first and returns the full profile")
-    void selectsTrainerAfterAuthentication() {
+    @DisplayName("selectByUsername returns the full profile")
+    void selectsTrainerProfile() {
         Trainer sarah = sarah(true);
         when(trainerDao.findProfileByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
 
-        Trainer found = trainerService.selectByUsername("Sarah.Miller", PASSWORD);
-
-        Assertions.assertSame(sarah, found);
-        verify(authenticationService).authenticate("Sarah.Miller", PASSWORD);
+        Assertions.assertSame(sarah, trainerService.selectByUsername("Sarah.Miller"));
     }
 
     @Test
@@ -161,7 +145,7 @@ class TrainerServiceTest {
         when(trainerDao.findProfileByUsername("Nobody.Here")).thenReturn(Optional.empty());
 
         Assertions.assertThrows(ProfileNotFoundException.class,
-                () -> trainerService.selectByUsername("Nobody.Here", PASSWORD));
+                () -> trainerService.selectByUsername("Nobody.Here"));
     }
 
     @Test
@@ -172,13 +156,23 @@ class TrainerServiceTest {
         when(trainerDao.findProfileByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
         when(trainerDao.update(sarah)).thenReturn(sarah);
 
-        Trainer updated = trainerService.updateProfile("Sarah.Miller", PASSWORD,
-                "Sara", "Millerson", true);
+        Trainer updated = trainerService.updateProfile("Sarah.Miller", "Sara", "Millerson", true);
 
         Assertions.assertEquals("Sara", updated.getUser().getFirstName());
         Assertions.assertEquals("Millerson", updated.getUser().getLastName());
         Assertions.assertSame(original, updated.getSpecialization());
         verifyNoInteractions(trainingTypeService);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "   "})
+    @DisplayName("updateProfile rejects a missing last name")
+    void rejectsUpdateWithoutLastName(String lastName) {
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> trainerService.updateProfile("Sarah.Miller", "Sarah", lastName, true));
+
+        verifyNoInteractions(trainerDao);
     }
 
     @Test
@@ -188,7 +182,7 @@ class TrainerServiceTest {
         when(trainerDao.findProfileByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
         when(trainerDao.update(sarah)).thenReturn(sarah);
 
-        Trainer updated = trainerService.updateProfile("Sarah.Miller", PASSWORD, "Sarah", "Miller", false);
+        Trainer updated = trainerService.updateProfile("Sarah.Miller", "Sarah", "Miller", false);
 
         Assertions.assertFalse(updated.getUser().isActive());
     }
@@ -200,7 +194,7 @@ class TrainerServiceTest {
         when(trainerDao.findProfileByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah));
         when(trainerDao.update(sarah)).thenReturn(sarah);
 
-        Trainer updated = trainerService.updateProfile("Sarah.Miller", PASSWORD, "Sarah", "Miller", true);
+        Trainer updated = trainerService.updateProfile("Sarah.Miller", "Sarah", "Miller", true);
 
         Assertions.assertTrue(updated.getUser().isActive());
     }
@@ -213,44 +207,19 @@ class TrainerServiceTest {
         when(trainerDao.update(sarah)).thenReturn(sarah);
 
         Trainer updated = Assertions.assertDoesNotThrow(
-                () -> trainerService.updateProfile("Sarah.Miller", PASSWORD, "Sarah", "Miller", true));
+                () -> trainerService.updateProfile("Sarah.Miller", "Sarah", "Miller", true));
 
         Assertions.assertTrue(updated.getUser().isActive());
-    }
-
-    @Test
-    @DisplayName("a failed authentication stops the operation before the dao is touched")
-    void authenticationFailureStopsTheOperation() {
-        doThrow(new AuthenticationException("Invalid username or password"))
-                .when(authenticationService).authenticate("Sarah.Miller", "wrongPassword");
-
-        Assertions.assertThrows(AuthenticationException.class,
-                () -> trainerService.selectByUsername("Sarah.Miller", "wrongPassword"));
-
-        verifyNoInteractions(trainerDao);
     }
 
     @Test
     @DisplayName("a saved trainer is counted as a registration")
     void countsTrainerRegistration() {
         when(trainingTypeService.requireByName("YOGA")).thenReturn(new TrainingType());
-        when(usernameResolver.generateUsername("Sarah", "Miller")).thenReturn("Sarah.Miller");
-        when(credentialGenerator.generatePassword()).thenReturn(PASSWORD);
+        when(userFactory.create("Sarah", "Miller")).thenReturn(newSarah());
 
         trainerService.createProfile("Sarah", "Miller", "YOGA");
 
         verify(gymMetrics).trainerRegistered();
-    }
-
-    @Test
-    @DisplayName("an unknown specialization is not counted as a registration")
-    void doesNotCountRejectedRegistration() {
-        when(trainingTypeService.requireByName("PILATES"))
-                .thenThrow(new IllegalArgumentException("Unknown training type: PILATES. Valid values: YOGA"));
-
-        Assertions.assertThrows(IllegalArgumentException.class,
-                () -> trainerService.createProfile("Sarah", "Miller", "PILATES"));
-
-        verifyNoInteractions(gymMetrics);
     }
 }

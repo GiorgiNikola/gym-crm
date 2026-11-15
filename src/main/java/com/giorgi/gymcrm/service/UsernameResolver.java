@@ -3,23 +3,18 @@ package com.giorgi.gymcrm.service;
 import com.giorgi.gymcrm.dao.UserDao;
 import com.giorgi.gymcrm.util.CredentialGenerator;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
 public class UsernameResolver {
 
-    private UserDao userDao;
-    private CredentialGenerator credentialGenerator;
+    private final UserDao userDao;
+    private final CredentialGenerator credentialGenerator;
 
-    @Autowired
-    public void setUserDao(UserDao userDao) {
+    public UsernameResolver(UserDao userDao,
+                            CredentialGenerator credentialGenerator) {
         this.userDao = userDao;
-    }
-
-    @Autowired
-    public void setCredentialGenerator(CredentialGenerator credentialGenerator) {
         this.credentialGenerator = credentialGenerator;
     }
 
