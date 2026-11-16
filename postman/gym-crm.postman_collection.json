@@ -3349,6 +3349,453 @@
         }
       },
       "response": []
+    },
+    {
+      "name": "Workload - Register trainer",
+      "event": [
+        {
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('workloadTrainerUsername', body.username);",
+              "pm.collectionVariables.set('workloadTrainerToken', body.token);"
+            ]
+          },
+          "listen": "test"
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "value": "application/json",
+            "key": "Content-Type"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"firstName\":\"Nina\",\"lastName\":\"Petrova\",\"specialization\":\"FITNESS\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/trainers",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "trainers"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Workload - Register trainee",
+      "event": [
+        {
+          "script": {
+            "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('workloadTraineeUsername', body.username);",
+              "pm.collectionVariables.set('workloadTraineeToken', body.token);"
+            ],
+            "type": "text/javascript"
+          },
+          "listen": "test"
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "value": "application/json",
+            "key": "Content-Type"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"firstName\":\"Luka\",\"lastName\":\"Beridze\",\"dateOfBirth\":\"1999-02-02\",\"address\":\"1 Freedom Square\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/trainees",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "trainees"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Workload - Add training sends ADD",
+      "event": [
+        {
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));"
+            ],
+            "type": "text/javascript"
+          },
+          "listen": "test"
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{workloadTraineeToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"traineeUsername\":\"{{workloadTraineeUsername}}\",\"trainerUsername\":\"{{workloadTrainerUsername}}\",\"trainingName\":\"Workload check\",\"trainingDate\":\"2026-09-15\",\"trainingDuration\":75}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/trainings",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "trainings"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Workload - Trainer reads the month's minutes",
+      "event": [
+        {
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('75 minutes in September', () => pm.expect(pm.response.json().trainingSummaryDuration).to.equal(75));"
+            ],
+            "type": "text/javascript"
+          },
+          "listen": "test"
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{workloadTrainerToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/trainers/{{workloadTrainerUsername}}/workload/2026/9",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "trainers",
+            "{{workloadTrainerUsername}}",
+            "workload",
+            "2026",
+            "9"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Workload - Month without trainings is 0",
+      "event": [
+        {
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('0 minutes', () => pm.expect(pm.response.json().trainingSummaryDuration).to.equal(0));"
+            ],
+            "type": "text/javascript"
+          },
+          "listen": "test"
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{workloadTrainerToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/trainers/{{workloadTrainerUsername}}/workload/2026/10",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "trainers",
+            "{{workloadTrainerUsername}}",
+            "workload",
+            "2026",
+            "10"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Workload - Someone else's workload is 403",
+      "event": [
+        {
+          "script": {
+            "exec": [
+              "pm.test('403 Forbidden', () => pm.response.to.have.status(403));"
+            ],
+            "type": "text/javascript"
+          },
+          "listen": "test"
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{workloadTraineeToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/trainers/{{workloadTrainerUsername}}/workload/2026/9",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "trainers",
+            "{{workloadTrainerUsername}}",
+            "workload",
+            "2026",
+            "9"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Workload - Month 13 is 400",
+      "event": [
+        {
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+            ]
+          },
+          "listen": "test"
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{workloadTrainerToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/trainers/{{workloadTrainerUsername}}/workload/2026/13",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "trainers",
+            "{{workloadTrainerUsername}}",
+            "workload",
+            "2026",
+            "13"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Workload - Delete trainee sends DELETE",
+      "event": [
+        {
+          "script": {
+            "exec": [
+              "pm.test('deleted', () => pm.expect(pm.response.code).to.be.oneOf([200, 204]));"
+            ],
+            "type": "text/javascript"
+          },
+          "listen": "test"
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{workloadTraineeToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/trainees/{{workloadTraineeUsername}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "trainees",
+            "{{workloadTraineeUsername}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Workload - Deleting the trainee removed the minutes",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('back to 0 minutes', () => pm.expect(pm.response.json().trainingSummaryDuration).to.equal(0));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{workloadTrainerToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/trainers/{{workloadTrainerUsername}}/workload/2026/9",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "trainers",
+            "{{workloadTrainerUsername}}",
+            "workload",
+            "2026",
+            "9"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Workload - Direct call to workload-service without token is 401",
+      "event": [
+        {
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+            ]
+          },
+          "listen": "test"
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "value": "application/json",
+            "key": "Content-Type"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"trainerUsername\":\"Nina.Petrova\",\"trainerFirstName\":\"Nina\",\"trainerLastName\":\"Petrova\",\"isActive\":true,\"trainingDate\":\"2026-09-15\",\"trainingDuration\":75,\"actionType\":\"ADD\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8081/workloads",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8081",
+          "path": [
+            "workloads"
+          ]
+        }
+      },
+      "response": []
     }
   ],
   "auth": {
@@ -3360,11 +3807,5 @@
         "type": "string"
       }
     ]
-  },
-  "variable": [
-    {
-      "key": "baseUrl",
-      "value": "http://localhost:8080"
-    }
-  ]
+  }
 }
