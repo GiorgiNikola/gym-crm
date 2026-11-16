@@ -4,6 +4,7 @@ import com.giorgi.gymcrm.dto.RegistrationResponse;
 import com.giorgi.gymcrm.dto.TrainerProfileResponse;
 import com.giorgi.gymcrm.dto.TrainerRegistrationRequest;
 import com.giorgi.gymcrm.dto.TrainerTrainingResponse;
+import com.giorgi.gymcrm.dto.TrainerWorkloadResponse;
 import com.giorgi.gymcrm.dto.UpdateTrainerRequest;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
 import com.giorgi.gymcrm.facade.RegisteredProfile;
@@ -117,5 +118,30 @@ public class TrainerController {
                 .stream()
                 .map(TrainerTrainingResponse::from)
                 .toList();
+    }
+
+    @GetMapping("/{username}/workload/{year}/{month}")
+    @PreAuthorize("#username == authentication.name")
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Returns the training time of a trainer in one month, in minutes",
+            description = "Read from workload-service. A trainer with no training yet has 0 minutes.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "The training time in that month"),
+            @ApiResponse(responseCode = "400", description = "The month is not between 1 and 12, or the year "
+                    + "or the month is not a number"),
+            @ApiResponse(responseCode = "401", description = "The token is missing or invalid"),
+            @ApiResponse(responseCode = "403", description = "The token belongs to another user"),
+            @ApiResponse(responseCode = "404", description = "There is no trainer with that username"),
+            @ApiResponse(responseCode = "503", description = "workload-service is down, too slow, or its "
+                    + "circuit breaker is open")
+    })
+    public TrainerWorkloadResponse getMonthlyWorkload(
+            @PathVariable String username,
+            @Parameter(description = "The calendar year", example = "2026")
+            @PathVariable int year,
+            @Parameter(description = "The month, from 1 to 12", example = "8")
+            @PathVariable int month) {
+        return new TrainerWorkloadResponse(username, year, month,
+                gymCrmFacade.getTrainerMonthlyWorkload(username, year, month));
     }
 }

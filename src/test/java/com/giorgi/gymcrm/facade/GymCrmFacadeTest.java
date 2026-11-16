@@ -10,6 +10,7 @@ import com.giorgi.gymcrm.service.NewUser;
 import com.giorgi.gymcrm.service.TraineeService;
 import com.giorgi.gymcrm.service.TrainerService;
 import com.giorgi.gymcrm.service.TrainingService;
+import com.giorgi.gymcrm.service.TrainerWorkloadService;
 import com.giorgi.gymcrm.service.TrainingTypeService;
 import com.giorgi.gymcrm.service.UserService;
 import org.junit.jupiter.api.Assertions;
@@ -53,6 +54,9 @@ class GymCrmFacadeTest {
 
     @Mock
     private LoginService loginService;
+
+    @Mock
+    private TrainerWorkloadService trainerWorkloadService;
 
     @InjectMocks
     private GymCrmFacade gymCrmFacade;
@@ -106,6 +110,14 @@ class GymCrmFacadeTest {
 
         Assertions.assertSame(trainee, gymCrmFacade.updateTraineeProfile(
                 "John.Smith", "John", "Smith", DATE_OF_BIRTH, ADDRESS, true));
+    }
+
+    @Test
+    @DisplayName("getTrainerMonthlyWorkload goes to the trainer workload service")
+    void readsTrainerMonthlyWorkload() {
+        when(trainerWorkloadService.getMonthlyMinutes("Sarah.Miller", 2026, 8)).thenReturn(150L);
+
+        Assertions.assertEquals(150L, gymCrmFacade.getTrainerMonthlyWorkload("Sarah.Miller", 2026, 8));
     }
 
     @Test

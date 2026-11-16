@@ -2,11 +2,16 @@ package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.dao.TraineeDao;
 import com.giorgi.gymcrm.dao.TrainerDao;
+import com.giorgi.gymcrm.dao.TrainingDao;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
+import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.model.User;
+import com.giorgi.gymcrm.workload.ActionType;
+import com.giorgi.gymcrm.workload.WorkloadChangedEvent;
+import com.giorgi.gymcrm.workload.WorkloadRequest;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,9 +20,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -45,6 +52,12 @@ class TraineeServiceTest {
 
     @Mock
     private GymMetrics gymMetrics;
+
+    @Mock
+    private TrainingDao trainingDao;
+
+    @Mock
+    private ApplicationEventPublisher events;
 
     @InjectMocks
     private TraineeService traineeService;
@@ -225,6 +238,43 @@ class TraineeServiceTest {
         traineeService.deleteByUsername("John.Smith");
 
         verify(traineeDao).delete(john);
+    }
+
+    @Test
+    @DisplayName("deleteByUsername loads the trainings before the delete and publishes one DELETE each")
+    void publishesADeletePerTraining() {
+        Trainee john = john(true);
+        Trainer sarah = trainer("Sarah", "Miller");
+        Trainer laura = trainer("Laura", "Davis");
+        laura.getUser().setActive(false);
+        Training morning = Training.builder().trainee(john).trainer(sarah)
+                .date(LocalDate.of(2026, 8, 1)).duration(60L).build();
+        Training evening = Training.builder().trainee(john).trainer(laura)
+                .date(LocalDate.of(2026, 9, 10)).duration(45L).build();
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john));
+        when(trainingDao.findTraineeTrainings("John.Smith", null, null, null, null))
+                .thenReturn(List.of(morning, evening));
+
+        traineeService.deleteByUsername("John.Smith");
+
+        InOrder order = inOrder(trainingDao, traineeDao, events);
+        order.verify(trainingDao).findTraineeTrainings("John.Smith", null, null, null, null);
+        order.verify(traineeDao).delete(john);
+        order.verify(events).publishEvent(new WorkloadChangedEvent(new WorkloadRequest(
+                "Sarah.Miller", "Sarah", "Miller", true, LocalDate.of(2026, 8, 1), 60, ActionType.DELETE)));
+        order.verify(events).publishEvent(new WorkloadChangedEvent(new WorkloadRequest(
+                "Laura.Davis", "Laura", "Davis", false, LocalDate.of(2026, 9, 10), 45, ActionType.DELETE)));
+        verifyNoMoreInteractions(events);
+    }
+
+    @Test
+    @DisplayName("deleting a trainee without trainings publishes nothing")
+    void publishesNothingWithoutTrainings() {
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john(true)));
+
+        traineeService.deleteByUsername("John.Smith");
+
+        verifyNoInteractions(events);
     }
 
     @Test

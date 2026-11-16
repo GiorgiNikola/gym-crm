@@ -29,6 +29,8 @@ gymcrm:
   jwt:
     # Development only, and obviously so. JWT_SECRET overrides it.
     secret: ${JWT_SECRET:local-development-only-secret-change-me-0123456789}
+  workload:
+    jwt-secret: ${WORKLOAD_JWT_SECRET:local-development-only-workload-secret-change-me-0123456789}
   cors:
     allowed-origins:
       - http://localhost:3000

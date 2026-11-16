@@ -1,0 +1,13 @@
+workload:
+  security:
+    jwt-secret: ${WORKLOAD_JWT_SECRET}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL}
+
+management:
+  endpoint:
+    health:
+      show-details: never

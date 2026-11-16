@@ -222,4 +222,23 @@ class TrainerServiceTest {
 
         verify(gymMetrics).trainerRegistered();
     }
+
+    @Test
+    @DisplayName("requireExists accepts a known trainer")
+    void requireExistsAcceptsAKnownTrainer() {
+        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah(true)));
+
+        Assertions.assertDoesNotThrow(() -> trainerService.requireExists("Sarah.Miller"));
+    }
+
+    @Test
+    @DisplayName("requireExists throws for an unknown trainer")
+    void requireExistsRejectsAnUnknownTrainer() {
+        when(trainerDao.findByUsername("John.Smith")).thenReturn(Optional.empty());
+
+        ProfileNotFoundException thrown = Assertions.assertThrows(ProfileNotFoundException.class,
+                () -> trainerService.requireExists("John.Smith"));
+
+        Assertions.assertEquals("Trainer not found: John.Smith", thrown.getMessage());
+    }
 }

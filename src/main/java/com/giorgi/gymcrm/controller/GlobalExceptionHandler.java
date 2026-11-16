@@ -3,6 +3,7 @@ package com.giorgi.gymcrm.controller;
 import com.giorgi.gymcrm.exception.LoginLockedException;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.exception.StateConflictException;
+import com.giorgi.gymcrm.exception.WorkloadUnavailableException;
 import com.giorgi.gymcrm.security.AccessDenialLog;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -59,6 +60,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(StateConflictException.class)
     public ProblemDetail handleStateConflict(StateConflictException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler(WorkloadUnavailableException.class)
+    public ProblemDetail handleWorkloadUnavailable(WorkloadUnavailableException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

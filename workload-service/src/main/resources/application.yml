@@ -1,0 +1,40 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: workload-service
+  profiles:
+    default: local
+  jackson:
+    datatype:
+      enum:
+        fail-on-numbers-for-enums: true
+  web:
+    resources:
+      add-mappings: false
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+    healthcheck:
+      enabled: true
+    instance-info-replication-interval-seconds: 5
+    registry-fetch-interval-seconds: 5
+  instance:
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+    lease-renewal-interval-in-seconds: 5
+    lease-expiration-duration-in-seconds: 15
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  default-produces-media-type: application/json

@@ -1,0 +1,7 @@
+workload:
+  security:
+    jwt-secret: ${WORKLOAD_JWT_SECRET:local-development-only-workload-secret-change-me-0123456789}
+
+logging:
+  level:
+    com.giorgi.workload: DEBUG

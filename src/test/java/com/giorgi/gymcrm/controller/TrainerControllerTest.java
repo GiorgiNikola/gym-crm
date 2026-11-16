@@ -1,5 +1,6 @@
 package com.giorgi.gymcrm.controller;
 
+import com.giorgi.gymcrm.exception.WorkloadUnavailableException;
 import com.giorgi.gymcrm.facade.GymCrmFacade;
 import com.giorgi.gymcrm.facade.RegisteredProfile;
 import com.giorgi.gymcrm.model.Trainee;
@@ -225,6 +226,39 @@ class TrainerControllerTest {
 
         verify(gymCrmFacade).getTrainerTrainings(USERNAME,
                 LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), "Smith");
+    }
+
+    @Test
+    @DisplayName("the monthly workload comes back with the trainer, the month and the minutes")
+    void returnsMonthlyWorkload() throws Exception {
+        when(gymCrmFacade.getTrainerMonthlyWorkload(USERNAME, 2026, 8)).thenReturn(150L);
+
+        mockMvc.perform(get("/trainers/{username}/workload/{year}/{month}", USERNAME, 2026, 8))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.trainerUsername").value(USERNAME))
+                .andExpect(jsonPath("$.year").value(2026))
+                .andExpect(jsonPath("$.month").value(8))
+                .andExpect(jsonPath("$.trainingSummaryDuration").value(150));
+    }
+
+    @Test
+    @DisplayName("an unreachable workload service comes back as 503")
+    void monthlyWorkloadUnavailable() throws Exception {
+        when(gymCrmFacade.getTrainerMonthlyWorkload(USERNAME, 2026, 8))
+                .thenThrow(new WorkloadUnavailableException(new IllegalStateException("breaker open")));
+
+        mockMvc.perform(get("/trainers/{username}/workload/{year}/{month}", USERNAME, 2026, 8))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.detail").value("Workload service is temporarily unavailable"));
+    }
+
+    @Test
+    @DisplayName("a year that is not a number comes back as 400")
+    void rejectsANonNumericYear() throws Exception {
+        mockMvc.perform(get("/trainers/{username}/workload/{year}/{month}", USERNAME, "this-year", 8))
+                .andExpect(status().isBadRequest());
+
+        verifyNoMoreInteractions(gymCrmFacade);
     }
 
 }
