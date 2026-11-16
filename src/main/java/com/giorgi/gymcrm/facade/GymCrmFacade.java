@@ -8,6 +8,7 @@ import com.giorgi.gymcrm.service.LoginService;
 import com.giorgi.gymcrm.service.NewUser;
 import com.giorgi.gymcrm.service.TraineeService;
 import com.giorgi.gymcrm.service.TrainerService;
+import com.giorgi.gymcrm.service.TrainerWorkloadService;
 import com.giorgi.gymcrm.service.TrainingService;
 import com.giorgi.gymcrm.service.TrainingTypeService;
 import com.giorgi.gymcrm.service.UserService;
@@ -26,19 +27,22 @@ public class GymCrmFacade {
     private final TrainingTypeService trainingTypeService;
     private final UserService userService;
     private final LoginService loginService;
+    private final TrainerWorkloadService trainerWorkloadService;
 
     public GymCrmFacade(TraineeService traineeService,
                         TrainerService trainerService,
                         TrainingService trainingService,
                         TrainingTypeService trainingTypeService,
                         UserService userService,
-                        LoginService loginService) {
+                        LoginService loginService,
+                        TrainerWorkloadService trainerWorkloadService) {
         this.traineeService = traineeService;
         this.trainerService = trainerService;
         this.trainingService = trainingService;
         this.trainingTypeService = trainingTypeService;
         this.userService = userService;
         this.loginService = loginService;
+        this.trainerWorkloadService = trainerWorkloadService;
     }
 
     public String login(String username, String password) {
@@ -116,5 +120,9 @@ public class GymCrmFacade {
 
     public List<TrainingType> getTrainingTypes() {
         return trainingTypeService.findAll();
+    }
+
+    public long getTrainerMonthlyWorkload(String username, int year, int month) {
+        return trainerWorkloadService.getMonthlyMinutes(username, year, month);
     }
 }

@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.FileSystemResource;
 
 import java.io.IOException;
 import java.util.List;
@@ -202,5 +203,40 @@ class ProfileConfigTest {
     void noProfileLeaksASecretElsewhere(String profile) throws IOException {
         Assertions.assertNull(profile(profile).getProperty("gymcrm.jwt.ttl"));
         Assertions.assertNull(profile(profile).getProperty("gymcrm.security.max-login-attempts"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"local", "dev", "standalone"})
+    @DisplayName("a development profile signs workload calls with the secret workload-service's local profile uses")
+    void developmentProfilesShareTheWorkloadSecret(String profile) throws IOException {
+        Assertions.assertEquals(
+                "${WORKLOAD_JWT_SECRET:local-development-only-workload-secret-change-me-0123456789}",
+                property(profile, "gymcrm.workload.jwt-secret"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"stg", "prod"})
+    @DisplayName("staging and production have no workload secret to fall back on")
+    void deployedProfilesRequireTheWorkloadSecret(String profile) throws IOException {
+        Assertions.assertEquals("${WORKLOAD_JWT_SECRET}", property(profile, "gymcrm.workload.jwt-secret"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"local", "dev", "stg", "prod", "standalone"})
+    @DisplayName("the workload secret is not the user token secret")
+    void workloadSecretIsSeparate(String profile) throws IOException {
+        Assertions.assertNotEquals(property(profile, "gymcrm.jwt.secret"),
+                property(profile, "gymcrm.workload.jwt-secret"));
+    }
+
+    @Test
+    @DisplayName("the development workload secret is the one workload-service falls back on locally")
+    void developmentWorkloadSecretMatchesWorkloadService() throws IOException {
+        PropertySource<?> workloadLocal = new YamlPropertySourceLoader()
+                .load("workload-local", new FileSystemResource("workload-service/src/main/resources/application-local.yml"))
+                .get(0);
+
+        Assertions.assertEquals(String.valueOf(workloadLocal.getProperty("workload.security.jwt-secret")),
+                property("local", "gymcrm.workload.jwt-secret"));
     }
 }

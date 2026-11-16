@@ -8,7 +8,11 @@ import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
+import com.giorgi.gymcrm.workload.ActionType;
+import com.giorgi.gymcrm.workload.WorkloadChangedEvent;
+import com.giorgi.gymcrm.workload.WorkloadRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,17 +30,20 @@ public class TrainingService {
     private final TrainerDao trainerDao;
     private final TrainingTypeService trainingTypeService;
     private final GymMetrics gymMetrics;
+    private final ApplicationEventPublisher events;
 
     public TrainingService(TrainingDao trainingDao,
                            TraineeDao traineeDao,
                            TrainerDao trainerDao,
                            TrainingTypeService trainingTypeService,
-                           GymMetrics gymMetrics) {
+                           GymMetrics gymMetrics,
+                           ApplicationEventPublisher events) {
         this.trainingDao = trainingDao;
         this.traineeDao = traineeDao;
         this.trainerDao = trainerDao;
         this.trainingTypeService = trainingTypeService;
         this.gymMetrics = gymMetrics;
+        this.events = events;
     }
 
     @Transactional
@@ -69,6 +76,7 @@ public class TrainingService {
 
         trainingDao.save(training);
         gymMetrics.trainingAdded(duration);
+        events.publishEvent(new WorkloadChangedEvent(WorkloadRequest.of(training, ActionType.ADD)));
         log.info("Added training '{}' for trainee {} with trainer {}", name, traineeUsername, trainerUsername);
         return training;
     }

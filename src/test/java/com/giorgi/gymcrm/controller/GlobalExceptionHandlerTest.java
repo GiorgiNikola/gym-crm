@@ -3,6 +3,7 @@ package com.giorgi.gymcrm.controller;
 import com.giorgi.gymcrm.exception.LoginLockedException;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.exception.StateConflictException;
+import com.giorgi.gymcrm.exception.WorkloadUnavailableException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -105,8 +106,25 @@ class GlobalExceptionHandlerTest {
         Assertions.assertFalse(result.getResponse().getContentAsString().contains("connection pool exhausted"));
     }
 
+    @Test
+    @DisplayName("an unreachable workload service becomes a 503 that says nothing about the cause")
+    void mapsWorkloadUnavailableToServiceUnavailable() throws Exception {
+        MvcResult result = mockMvc.perform(get("/workload-unavailable"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.detail").value("Workload service is temporarily unavailable"))
+                .andReturn();
+
+        Assertions.assertFalse(result.getResponse().getContentAsString().contains("Connection refused"));
+    }
+
     @RestController
     class ThrowingController {
+
+        @GetMapping("/workload-unavailable")
+        void workloadUnavailable() {
+            throw new WorkloadUnavailableException(new IllegalStateException("Connection refused"));
+        }
 
         @GetMapping("/illegal-argument")
         void illegalArgument() {
