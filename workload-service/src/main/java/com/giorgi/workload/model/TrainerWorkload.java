@@ -9,7 +9,7 @@ import java.util.TreeMap;
 public record TrainerWorkload(String trainerUsername,
                               String trainerFirstName,
                               String trainerLastName,
-                              boolean trainerStatus,
+                              TrainerStatus trainerStatus,
                               List<YearSummary> years) {
 
     public TrainerWorkload {
@@ -45,7 +45,7 @@ public record TrainerWorkload(String trainerUsername,
             totals.remove(change.period());
         }
         return new TrainerWorkload(trainerUsername, change.trainerFirstName(), change.trainerLastName(),
-                change.active(), toYears(totals));
+                change.trainerStatus(), toYears(totals));
     }
 
     private SortedMap<YearMonth, Long> totalsByPeriod() {

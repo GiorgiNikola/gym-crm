@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.hibernate.validator.constraints.Range;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Workloads", description = "Monthly training time of trainers, in minutes")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/workloads")
 public class WorkloadController {
@@ -44,6 +46,12 @@ public class WorkloadController {
             @ApiResponse(responseCode = "400", description = "A field is missing, blank, not positive, "
                     + "or the body is not readable",
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "401", description = "The token is missing or not valid",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "403", description = "The token does not carry the scope workload:write",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                             schema = @Schema(implementation = ProblemDetail.class)))
     })
     public void recordChange(@Valid @RequestBody WorkloadRequest request) {
@@ -56,6 +64,12 @@ public class WorkloadController {
                     + "not listed.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "The workload summary"),
+            @ApiResponse(responseCode = "401", description = "The token is missing or not valid",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "403", description = "The token does not carry the scope workload:read",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ProblemDetail.class))),
             @ApiResponse(responseCode = "404", description = "There is no workload for that trainer",
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                             schema = @Schema(implementation = ProblemDetail.class)))
@@ -73,6 +87,12 @@ public class WorkloadController {
             @ApiResponse(responseCode = "200", description = "The training time in that month"),
             @ApiResponse(responseCode = "400", description = "The month is not between 1 and 12, or the "
                     + "year or the month is not a number",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "401", description = "The token is missing or not valid",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                            schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "403", description = "The token does not carry the scope workload:read",
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                             schema = @Schema(implementation = ProblemDetail.class))),
             @ApiResponse(responseCode = "404", description = "There is no workload for that trainer",

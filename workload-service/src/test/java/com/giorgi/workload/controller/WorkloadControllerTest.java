@@ -3,6 +3,7 @@ package com.giorgi.workload.controller;
 import com.giorgi.workload.exception.TrainerNotFoundException;
 import com.giorgi.workload.model.ActionType;
 import com.giorgi.workload.model.MonthSummary;
+import com.giorgi.workload.model.TrainerStatus;
 import com.giorgi.workload.model.TrainerWorkload;
 import com.giorgi.workload.model.WorkloadChange;
 import com.giorgi.workload.model.YearSummary;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -36,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(WorkloadController.class)
+@AutoConfigureMockMvc(addFilters = false)
 class WorkloadControllerTest {
 
     private static final String USERNAME = "Sarah.Miller";
@@ -84,7 +87,7 @@ class WorkloadControllerTest {
     }
 
     private TrainerWorkload sarah() {
-        return new TrainerWorkload(USERNAME, "Sarah", "Miller", true, List.of(
+        return new TrainerWorkload(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE, List.of(
                 new YearSummary(2026, List.of(new MonthSummary(8, 150), new MonthSummary(9, 45))),
                 new YearSummary(2027, List.of(new MonthSummary(1, 30)))));
     }
@@ -96,7 +99,7 @@ class WorkloadControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(""));
 
-        verify(workloadService).apply(new WorkloadChange(USERNAME, "Sarah", "Miller", true,
+        verify(workloadService).apply(new WorkloadChange(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE,
                 LocalDate.of(2026, 8, 1), 60, ActionType.ADD));
     }
 
@@ -108,7 +111,7 @@ class WorkloadControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(""));
 
-        verify(workloadService).apply(new WorkloadChange(USERNAME, "Sarah", "Miller", false,
+        verify(workloadService).apply(new WorkloadChange(USERNAME, "Sarah", "Miller", TrainerStatus.INACTIVE,
                 LocalDate.of(2026, 8, 1), 45, ActionType.DELETE));
     }
 
@@ -201,23 +204,26 @@ class WorkloadControllerTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"", "{\"trainerUsername\":", "not json"})
-    @DisplayName("a missing or malformed body comes back as 400")
+    @DisplayName("a missing or malformed body comes back as 400 with a generic message")
     void rejectsUnreadableBody(String json) throws Exception {
         postWorkload(json)
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.detail").value("Failed to read request"));
 
         verifyNoInteractions(workloadService);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"\"UPDATE\"", "\"add\"", "\"\""})
-    @DisplayName("an unknown action type comes back as 400")
+    @ValueSource(strings = {"\"UPDATE\"", "\"add\"", "\"\"", "7", "1"})
+    @DisplayName("an unknown action type comes back as 400 and lists the allowed values")
     void rejectsUnknownActionType(String actionType) throws Exception {
         postWorkload(bodyWithActionType(actionType))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.detail").value("actionType must be one of: ADD, DELETE"));
 
         verifyNoInteractions(workloadService);
     }
@@ -247,13 +253,14 @@ class WorkloadControllerTest {
     @Test
     @DisplayName("an unreadable body says nothing about the parser")
     void hidesParserDetails() throws Exception {
-        MvcResult result = postWorkload(bodyWithActionType("\"UPDATE\""))
+        MvcResult result = postWorkload(bodyWithDate("\"yesterday\""))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Failed to read request"))
                 .andReturn();
 
         String response = result.getResponse().getContentAsString();
         Assertions.assertFalse(response.contains("jackson"), response);
-        Assertions.assertFalse(response.contains("ActionType"), response);
+        Assertions.assertFalse(response.contains("LocalDate"), response);
     }
 
     @Test
@@ -267,7 +274,7 @@ class WorkloadControllerTest {
                 .andExpect(jsonPath("$.trainerUsername").value(USERNAME))
                 .andExpect(jsonPath("$.trainerFirstName").value("Sarah"))
                 .andExpect(jsonPath("$.trainerLastName").value("Miller"))
-                .andExpect(jsonPath("$.trainerStatus").value(true))
+                .andExpect(jsonPath("$.trainerStatus").value("ACTIVE"))
                 .andExpect(jsonPath("$.years.length()").value(2))
                 .andExpect(jsonPath("$.years[0].year").value(2026))
                 .andExpect(jsonPath("$.years[0].months.length()").value(2))

@@ -5,8 +5,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.UUID;
 
@@ -18,10 +21,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 class WorkloadFlowIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    private ResultActions read(String path, Object... variables) throws Exception {
+        return mockMvc.perform(get(path, variables)
+                .header(HttpHeaders.AUTHORIZATION, TestTokens.bearer(TestTokens.READ)));
+    }
 
     private String newUsername() {
         return "trainer." + UUID.randomUUID();
@@ -30,6 +39,7 @@ class WorkloadFlowIntegrationTest {
     private void send(String username, String lastName, boolean active,
                       String date, int minutes, String actionType) throws Exception {
         mockMvc.perform(post("/workloads")
+                        .header(HttpHeaders.AUTHORIZATION, TestTokens.bearer(TestTokens.WRITE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"trainerUsername":"%s","trainerFirstName":"Sarah","trainerLastName":"%s",
@@ -47,7 +57,7 @@ class WorkloadFlowIntegrationTest {
         send(username, "Miller", true, "2026-08-20", 90, "ADD");
         send(username, "Miller", true, "2026-08-01", 45, "DELETE");
 
-        mockMvc.perform(get("/workloads/{username}", username))
+        read("/workloads/{username}", username)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.trainerUsername").value(username))
                 .andExpect(jsonPath("$.years.length()").value(1))
@@ -56,7 +66,7 @@ class WorkloadFlowIntegrationTest {
                 .andExpect(jsonPath("$.years[0].months[0].month").value(8))
                 .andExpect(jsonPath("$.years[0].months[0].trainingSummaryDuration").value(105));
 
-        mockMvc.perform(get("/workloads/{username}/{year}/{month}", username, 2026, 8))
+        read("/workloads/{username}/{year}/{month}", username, 2026, 8)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.trainingSummaryDuration").value(105));
     }
@@ -69,10 +79,10 @@ class WorkloadFlowIntegrationTest {
         send(username, "Miller", true, "2026-09-05", 45, "ADD");
         send(username, "Miller-Jones", false, "2026-08-01", 60, "ADD");
 
-        mockMvc.perform(get("/workloads/{username}", username))
+        read("/workloads/{username}", username)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.trainerLastName").value("Miller-Jones"))
-                .andExpect(jsonPath("$.trainerStatus").value(false))
+                .andExpect(jsonPath("$.trainerStatus").value("INACTIVE"))
                 .andExpect(jsonPath("$.years[0].year").value(2026))
                 .andExpect(jsonPath("$.years[0].months[0].month").value(8))
                 .andExpect(jsonPath("$.years[0].months[1].month").value(9))
@@ -87,11 +97,11 @@ class WorkloadFlowIntegrationTest {
         send(username, "Miller", true, "2026-08-01", 60, "ADD");
         send(username, "Miller", true, "2026-08-01", 200, "DELETE");
 
-        mockMvc.perform(get("/workloads/{username}", username))
+        read("/workloads/{username}", username)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.years.length()").value(0));
 
-        mockMvc.perform(get("/workloads/{username}/{year}/{month}", username, 2026, 8))
+        read("/workloads/{username}/{year}/{month}", username, 2026, 8)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.trainingSummaryDuration").value(0));
     }
@@ -102,7 +112,7 @@ class WorkloadFlowIntegrationTest {
         String username = newUsername();
         send(username, "Miller", true, "2026-08-01", 60, "DELETE");
 
-        mockMvc.perform(get("/workloads/{username}", username))
+        read("/workloads/{username}", username)
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
@@ -110,7 +120,7 @@ class WorkloadFlowIntegrationTest {
     @Test
     @DisplayName("an unknown path comes back as a 404 problem")
     void reportsUnknownPathAsProblem() throws Exception {
-        mockMvc.perform(get("/no-such-path"))
+        read("/no-such-path")
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
@@ -118,7 +128,7 @@ class WorkloadFlowIntegrationTest {
     @Test
     @DisplayName("none of the throwing controller's paths are mapped in the application")
     void leavesTheTestOnlyThrowingControllerPathsUnmapped() throws Exception {
-        mockMvc.perform(get("/unexpected"))
+        read("/unexpected")
                 .andExpect(status().isNotFound());
     }
 }

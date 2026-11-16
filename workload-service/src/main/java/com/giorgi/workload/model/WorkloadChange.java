@@ -8,7 +8,7 @@ import java.util.Optional;
 public record WorkloadChange(String trainerUsername,
                              String trainerFirstName,
                              String trainerLastName,
-                             boolean active,
+                             TrainerStatus trainerStatus,
                              LocalDate trainingDate,
                              int trainingDuration,
                              ActionType actionType) {
@@ -25,6 +25,6 @@ public record WorkloadChange(String trainerUsername,
     }
 
     private TrainerWorkload emptyWorkload() {
-        return new TrainerWorkload(trainerUsername, trainerFirstName, trainerLastName, active, List.of());
+        return new TrainerWorkload(trainerUsername, trainerFirstName, trainerLastName, trainerStatus, List.of());
     }
 }

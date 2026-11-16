@@ -5,6 +5,7 @@ import com.giorgi.workload.LogCapture;
 import com.giorgi.workload.exception.TrainerNotFoundException;
 import com.giorgi.workload.model.ActionType;
 import com.giorgi.workload.model.MonthSummary;
+import com.giorgi.workload.model.TrainerStatus;
 import com.giorgi.workload.model.TrainerWorkload;
 import com.giorgi.workload.model.WorkloadChange;
 import com.giorgi.workload.model.YearSummary;
@@ -60,14 +61,14 @@ class WorkloadServiceTest {
     }
 
     private WorkloadChange change(ActionType actionType, int minutes) {
-        return new WorkloadChange(USERNAME, "Sarah", "Miller", true, DATE, minutes, actionType);
+        return new WorkloadChange(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE, DATE, minutes, actionType);
     }
 
     private Optional<TrainerWorkload> workload(long minutes) {
         List<YearSummary> years = minutes == 0
                 ? List.of()
                 : List.of(new YearSummary(2026, List.of(new MonthSummary(8, minutes))));
-        return Optional.of(new TrainerWorkload(USERNAME, "Sarah", "Miller", true, years));
+        return Optional.of(new TrainerWorkload(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE, years));
     }
 
     private void repositoryReports(Optional<TrainerWorkload> before, Optional<TrainerWorkload> after) {

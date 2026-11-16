@@ -12,7 +12,13 @@ public final class LogCapture implements AutoCloseable {
 
     private final Logger logger;
     private final Level originalLevel;
-    private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    private final ListAppender<ILoggingEvent> appender = new ListAppender<>() {
+        @Override
+        protected void append(ILoggingEvent event) {
+            event.prepareForDeferredProcessing();
+            super.append(event);
+        }
+    };
 
     private LogCapture(Class<?> type) {
         logger = (Logger) LoggerFactory.getLogger(type);
@@ -36,6 +42,12 @@ public final class LogCapture implements AutoCloseable {
         return appender.list.stream()
                 .filter(event -> event.getLevel() == level)
                 .map(ILoggingEvent::getFormattedMessage)
+                .toList();
+    }
+
+    public List<String> mdcValues(String key) {
+        return appender.list.stream()
+                .map(event -> event.getMDCPropertyMap().get(key))
                 .toList();
     }
 

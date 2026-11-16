@@ -1,6 +1,7 @@
 package com.giorgi.workload.repository;
 
 import com.giorgi.workload.model.ActionType;
+import com.giorgi.workload.model.TrainerStatus;
 import com.giorgi.workload.model.TrainerWorkload;
 import com.giorgi.workload.model.WorkloadChange;
 import org.junit.jupiter.api.Assertions;
@@ -24,7 +25,7 @@ class InMemoryTrainerWorkloadRepositoryTest {
     private final InMemoryTrainerWorkloadRepository repository = new InMemoryTrainerWorkloadRepository();
 
     private WorkloadChange change(String username, ActionType actionType, int minutes) {
-        return new WorkloadChange(username, "Sarah", "Miller", true, DATE, minutes, actionType);
+        return new WorkloadChange(username, "Sarah", "Miller", TrainerStatus.ACTIVE, DATE, minutes, actionType);
     }
 
     @Test

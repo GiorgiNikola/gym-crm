@@ -1,0 +1,3 @@
+workload:
+  security:
+    jwt-secret: ${WORKLOAD_JWT_SECRET}

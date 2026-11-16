@@ -1,6 +1,7 @@
 package com.giorgi.workload.dto;
 
 import com.giorgi.workload.model.ActionType;
+import com.giorgi.workload.model.TrainerStatus;
 import com.giorgi.workload.model.WorkloadChange;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -41,7 +42,7 @@ public record WorkloadRequest(
         ActionType actionType) {
 
     public WorkloadChange toChange() {
-        return new WorkloadChange(trainerUsername, trainerFirstName, trainerLastName, isActive,
-                trainingDate, trainingDuration, actionType);
+        return new WorkloadChange(trainerUsername, trainerFirstName, trainerLastName,
+                TrainerStatus.of(isActive), trainingDate, trainingDuration, actionType);
     }
 }

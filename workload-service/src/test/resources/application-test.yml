@@ -1,0 +1,7 @@
+workload:
+  security:
+    jwt-secret: test-only-workload-secret-0123456789abcdef
+
+eureka:
+  client:
+    enabled: false

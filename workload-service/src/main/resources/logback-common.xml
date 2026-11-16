@@ -1,0 +1,12 @@
+<included>
+
+    <property name="WORKLOAD_LOG_PATTERN"
+              value="%d{HH:mm:ss.SSS} %-5level [%X{transactionId}] %logger{36} - %msg%n"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${WORKLOAD_LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+</included>

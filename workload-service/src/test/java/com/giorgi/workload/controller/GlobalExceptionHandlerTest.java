@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -116,14 +118,57 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("a body that cannot be read becomes a 400")
+    @DisplayName("a body that cannot be read becomes a 400 with a generic message")
     void mapsUnreadableBodyToBadRequest() throws Exception {
         mockMvc.perform(post("/validated")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.detail").value("Failed to read request"));
+    }
+
+    @Test
+    @DisplayName("a value of the wrong type that is not an enum keeps the generic message")
+    void keepsGenericMessageForOtherFormats() throws Exception {
+        mockMvc.perform(post("/validated")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Sarah\",\"minutes\":\"sixty\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Failed to read request"));
+    }
+
+    @Test
+    @DisplayName("an unknown enum value becomes a 400 that names the field and the allowed values")
+    void mapsUnknownEnumValueToAllowedValues() throws Exception {
+        mockMvc.perform(post("/leveled")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"level\":\"EXTREME\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.detail").value("level must be one of: LOW, MEDIUM, HIGH"));
+    }
+
+    @Test
+    @DisplayName("an unknown enum value in a nested object is named with its path")
+    void namesNestedEnumField() throws Exception {
+        mockMvc.perform(post("/leveled")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nested\":{\"level\":\"EXTREME\"}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("nested.level must be one of: LOW, MEDIUM, HIGH"));
+    }
+
+    @Test
+    @DisplayName("an unknown enum value in a list is named by the list")
+    void namesEnumFieldInsideList() throws Exception {
+        mockMvc.perform(post("/leveled")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"levels\":[\"LOW\",\"EXTREME\"]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("levels must be one of: LOW, MEDIUM, HIGH"));
     }
 
     @Test
@@ -147,6 +192,18 @@ class GlobalExceptionHandlerTest {
     record ValidatedBody(@NotBlank String name, @Positive int minutes) {
     }
 
+    enum Intensity {
+        LOW,
+        MEDIUM,
+        HIGH
+    }
+
+    record Nested(Intensity level) {
+    }
+
+    record LeveledBody(Intensity level, Nested nested, List<Intensity> levels) {
+    }
+
     @RestController
     class ThrowingController {
 
@@ -167,6 +224,10 @@ class GlobalExceptionHandlerTest {
 
         @PostMapping("/validated")
         void validated(@Valid @RequestBody ValidatedBody body) {
+        }
+
+        @PostMapping("/leveled")
+        void leveled(@RequestBody LeveledBody body) {
         }
 
         @GetMapping("/months/{month}")

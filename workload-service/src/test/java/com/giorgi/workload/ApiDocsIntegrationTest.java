@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -14,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 class ApiDocsIntegrationTest {
 
     @Autowired
@@ -75,6 +77,47 @@ class ApiDocsIntegrationTest {
                         .value("#/components/schemas/ProblemDetail"))
                 .andExpect(jsonPath(month + "['404'].content" + problem)
                         .value("#/components/schemas/ProblemDetail"));
+    }
+
+    @Test
+    @DisplayName("the bearer token is declared as the security scheme")
+    void declaresBearerScheme() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.type").value("http"))
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.bearerFormat").value("JWT"));
+    }
+
+    @Test
+    @DisplayName("every endpoint points at the bearer scheme and documents 401 and 403")
+    void marksEveryEndpointAsSecured() throws Exception {
+        String post = "$.paths['/workloads'].post";
+        String summary = "$.paths['/workloads/{username}'].get";
+        String month = "$.paths['/workloads/{username}/{year}/{month}'].get";
+
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(post + ".security[0].bearerAuth").exists())
+                .andExpect(jsonPath(summary + ".security[0].bearerAuth").exists())
+                .andExpect(jsonPath(month + ".security[0].bearerAuth").exists())
+                .andExpect(jsonPath(post + ".responses['401']").exists())
+                .andExpect(jsonPath(post + ".responses['403']").exists())
+                .andExpect(jsonPath(summary + ".responses['401']").exists())
+                .andExpect(jsonPath(summary + ".responses['403']").exists())
+                .andExpect(jsonPath(month + ".responses['401']").exists())
+                .andExpect(jsonPath(month + ".responses['403']").exists());
+    }
+
+    @Test
+    @DisplayName("the summary documents the trainer status as ACTIVE or INACTIVE")
+    void documentsTheTrainerStatus() throws Exception {
+        String status = "$.components.schemas.TrainerWorkloadResponse.properties.trainerStatus";
+
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(status + ".enum[0]").value("ACTIVE"))
+                .andExpect(jsonPath(status + ".enum[1]").value("INACTIVE"));
     }
 
     @Test

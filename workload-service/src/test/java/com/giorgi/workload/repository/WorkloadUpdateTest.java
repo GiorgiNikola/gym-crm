@@ -1,6 +1,7 @@
 package com.giorgi.workload.repository;
 
 import com.giorgi.workload.model.MonthSummary;
+import com.giorgi.workload.model.TrainerStatus;
 import com.giorgi.workload.model.TrainerWorkload;
 import com.giorgi.workload.model.YearSummary;
 import org.junit.jupiter.api.Assertions;
@@ -16,7 +17,7 @@ class WorkloadUpdateTest {
     private static final YearMonth AUGUST = YearMonth.of(2026, 8);
 
     private Optional<TrainerWorkload> workload(long minutes) {
-        return Optional.of(new TrainerWorkload("Sarah.Miller", "Sarah", "Miller", true,
+        return Optional.of(new TrainerWorkload("Sarah.Miller", "Sarah", "Miller", TrainerStatus.ACTIVE,
                 List.of(new YearSummary(2026, List.of(new MonthSummary(8, minutes))))));
     }
 
