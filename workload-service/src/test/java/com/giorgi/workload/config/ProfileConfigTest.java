@@ -49,6 +49,21 @@ class ProfileConfigTest {
     }
 
     @Test
+    @DisplayName("the docker profile needs an eureka url and hides health details")
+    void dockerProfileHidesDetails() throws IOException {
+        Assertions.assertEquals("${EUREKA_URL}",
+                property("application-docker.yml", "eureka.client.service-url.defaultZone"));
+        Assertions.assertEquals("never", property("application-docker.yml", "management.endpoint.health.show-details"));
+    }
+
+    @Test
+    @DisplayName("instances register under a configurable hostname, localhost by default")
+    void registersConfigurableHostname() throws IOException {
+        Assertions.assertEquals("${EUREKA_INSTANCE_HOSTNAME:localhost}",
+                property("application.yml", "eureka.instance.hostname"));
+    }
+
+    @Test
     @DisplayName("the test profile keeps the eureka client off")
     void testProfileDisablesEureka() throws IOException {
         Assertions.assertEquals("false", property("application-test.yml", "eureka.client.enabled"));

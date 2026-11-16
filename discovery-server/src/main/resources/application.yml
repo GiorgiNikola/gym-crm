@@ -12,6 +12,8 @@ eureka:
   server:
     enable-self-preservation: false
     eviction-interval-timer-in-ms: 5000
+    # Reads come from the cache that every registration invalidates, instead of a copy refreshed every 30s.
+    use-read-only-response-cache: false
 
 management:
   endpoints:

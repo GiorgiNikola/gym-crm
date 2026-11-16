@@ -239,10 +239,32 @@ docker rm -f gym-crm gymcrm-db
 docker network rm gymcrm-net
 ```
 
-The same thing with compose:
+### The full stack with compose
+
+`compose.yml` runs four services on the `gymcrm-net` network:
+
+| Service | Container | Port on the host | Health |
+|---|---|---|---|
+| `db` | `gymcrm-db` | none | `pg_isready` |
+| `discovery-server` | `discovery-server` | 8761 | http://localhost:8761/actuator/health |
+| `workload-service` | `workload-service` | 8081 | http://localhost:8081/actuator/health |
+| `app` | `gym-crm` | 8080 | http://localhost:8080/actuator/health |
+
+Each Spring service is its own image, built from its own folder. Compose also needs a second
+env file for the service secret:
+
+```bash
+cp .env.services.docker.example .env.services.docker
+```
+
+It holds `WORKLOAD_JWT_SECRET`, the secret gym-crm signs its service token with and
+workload-service checks it with; generate one with `openssl rand -base64 48`. It is git ignored
+like `.env.docker`. The app gets both files, workload-service only this one, so it never sees the
+database credentials.
 
 ```bash
 docker compose up -d --build
+docker compose ps
 docker compose down
 ```
 
@@ -253,9 +275,31 @@ database wiped too:
 docker compose down -v
 ```
 
-Compose waits for the database: the `db` service has a `pg_isready` healthcheck and the `app`
-service depends on it with `condition: service_healthy`, so the app never starts against a
-database that is not accepting connections yet.
+Nothing is assumed ready just because its container started. Every service has a healthcheck,
+probed every 2 seconds while it starts, and `depends_on` waits for `service_healthy`: the app
+waits for the database and for Eureka, workload-service waits for Eureka. The app does not wait
+for workload-service. It finds it through Eureka by the name `workload-service`, and while it is
+missing the circuit breaker opens, requests still succeed and a WARN line records the
+transaction id of every change that was not sent.
+
+Both clients get `EUREKA_URL=http://discovery-server:8761/eureka` and register under their
+compose service name through `EUREKA_INSTANCE_HOSTNAME` (`app`, `workload-service`; `localhost`
+outside Docker). No container IPs appear anywhere. The Eureka dashboard is at
+http://localhost:8761. The three Spring services restart `unless-stopped`; when Eureka comes
+back, both clients re-register on their next 5 second heartbeat. Eureka serves reads without
+its 30 second read-only cache, so a registration shows up on the next client fetch.
+
+workload-service runs on its own as well. Its image defaults to the `docker` profile, which has
+no fallback for `WORKLOAD_JWT_SECRET` or `EUREKA_URL`, so both are required:
+
+```bash
+docker run --rm -d --name workload-service -p 8081:8081 \
+  -e WORKLOAD_JWT_SECRET="$(openssl rand -base64 48)" \
+  -e EUREKA_URL=http://localhost:8761/eureka workload-service:latest
+```
+
+Without a reachable Eureka it still starts and answers health; it keeps retrying in the
+background.
 
 ### Why gymcrm-db and not localhost
 
@@ -277,7 +321,7 @@ docker exec gymcrm-db psql -U gymcrm -d gymcrm -c "select username from users;"
 
 ### Logs
 
-The container logs to the console and to a rolling file at `/app/logs/gym-crm.log`, capped at
+gym-crm logs to the console and to a rolling file at `/app/logs/gym-crm.log`, capped at
 10 MB with 3 files kept. Only the image turns the file on, through `LOGGING_CONFIG` and
 `LOGGING_FILE_NAME`, so running the app on your machine writes no files.
 
@@ -301,6 +345,14 @@ curl -i http://localhost:8080/training-types \
 docker exec gym-crm grep demo-123 /app/logs/gym-crm.log
 ```
 
+workload-service does the same, into `/app/logs/workload-service.log`, and logs the transaction
+id gym-crm forwards, so one id follows a request across both services:
+
+```bash
+docker logs gym-crm 2>&1 | grep demo-123
+docker logs workload-service 2>&1 | grep demo-123
+```
+
 Passwords and tokens are masked and headers are never logged, so the file holds no credentials.
 
 ### The image
@@ -311,9 +363,8 @@ last, so a code change rebuilds a few hundred kB instead of the whole thing. It 
 non-root user `gymcrm`, and a HEALTHCHECK calls `/actuator/health`, which is what compose waits
 on.
 
-The Report service and the message queue are not built yet. When they are, they join the same
-`gymcrm-net` network and reach the app by container name, the same way the app reaches the
-database.
+The discovery-server and workload-service images are built the same way and run as the
+non-root users `discovery` and `workload`.
 
 ## Trying it
 
