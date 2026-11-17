@@ -1,5 +1,6 @@
 package com.giorgi.workload.web;
 
+import com.giorgi.workload.logging.TransactionIds;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
@@ -63,10 +64,10 @@ class TransactionIdFilterTest {
     void keepsIdInMdcForTheChain() throws Exception {
         AtomicReference<String> insideChain = new AtomicReference<>();
 
-        filter.doFilter(request, response, (req, res) -> insideChain.set(MDC.get(TransactionIdFilter.MDC_KEY)));
+        filter.doFilter(request, response, (req, res) -> insideChain.set(MDC.get(TransactionIds.MDC_KEY)));
 
         Assertions.assertEquals(responseId(), insideChain.get());
-        Assertions.assertNull(MDC.get(TransactionIdFilter.MDC_KEY));
+        Assertions.assertNull(MDC.get(TransactionIds.MDC_KEY));
     }
 
     @Test
@@ -77,6 +78,6 @@ class TransactionIdFilterTest {
         };
 
         Assertions.assertThrows(IllegalStateException.class, () -> filter.doFilter(request, response, failing));
-        Assertions.assertNull(MDC.get(TransactionIdFilter.MDC_KEY));
+        Assertions.assertNull(MDC.get(TransactionIds.MDC_KEY));
     }
 }

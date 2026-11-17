@@ -35,6 +35,15 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    jms:
+      enabled: false
 
 springdoc:
   default-produces-media-type: application/json
+
+workload:
+  messaging:
+    queue: trainer.workload
+    dead-letter-queue: DLQ.trainer.workload
+    concurrency: 2-4

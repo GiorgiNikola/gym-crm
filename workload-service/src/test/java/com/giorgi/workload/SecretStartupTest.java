@@ -51,4 +51,17 @@ class SecretStartupTest {
         Assertions.assertEquals("The docker profile has no default token secret: set the WORKLOAD_JWT_SECRET "
                 + "environment variable to a random value of at least 32 bytes", cause.getMessage());
     }
+
+    @Test
+    @DisplayName("the docker profile without the broker variables stops the startup")
+    void failsStartupOfDockerProfileWithoutBrokerVariables() {
+        Assumptions.assumeTrue(System.getenv("ARTEMIS_URL") == null, "ARTEMIS_URL is set on this machine");
+
+        Throwable cause = startupFailure("--spring.profiles.active=docker", "--server.port=0",
+                "--eureka.client.enabled=false", "--WORKLOAD_JWT_SECRET=a-real-secret-from-the-vault-0123456789");
+
+        Assertions.assertInstanceOf(IllegalStateException.class, cause);
+        Assertions.assertEquals("The docker profile has no default broker setting: set the ARTEMIS_URL "
+                + "environment variable", cause.getMessage());
+    }
 }

@@ -1,5 +1,6 @@
 package com.giorgi.workload.config;
 
+import com.giorgi.workload.security.Scopes;
 import com.giorgi.workload.security.WorkloadSecurityProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,9 +27,6 @@ public class SecurityConfig {
 
     public static final String ISSUER = "gym-crm";
     public static final String AUDIENCE = "workload-service";
-
-    private static final String WRITE_SCOPE = "SCOPE_workload:write";
-    private static final String READ_SCOPE = "SCOPE_workload:read";
 
     private static final String[] PUBLIC_PATHS = {
             "/actuator/health",
@@ -61,8 +59,8 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(PUBLIC_PATHS).permitAll()
-                        .requestMatchers(HttpMethod.POST, "/workloads").hasAuthority(WRITE_SCOPE)
-                        .requestMatchers(HttpMethod.GET, "/workloads/**").hasAuthority(READ_SCOPE)
+                        .requestMatchers(HttpMethod.POST, "/workloads").hasAuthority(Scopes.WRITE_AUTHORITY)
+                        .requestMatchers(HttpMethod.GET, "/workloads/**").hasAuthority(Scopes.READ_AUTHORITY)
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .jwt(Customizer.withDefaults())

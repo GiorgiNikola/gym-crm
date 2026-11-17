@@ -1,6 +1,7 @@
 package com.giorgi.workload;
 
 import ch.qos.logback.classic.Level;
+import com.giorgi.workload.logging.TransactionIds;
 import com.giorgi.workload.security.AccessDenialLog;
 import com.giorgi.workload.service.WorkloadService;
 import com.giorgi.workload.web.RequestLoggingFilter;
@@ -32,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TransactionLoggingIntegrationTest {
 
     private static final String HEADER = TransactionIdFilter.TRANSACTION_ID_HEADER;
-    private static final String MDC_KEY = TransactionIdFilter.MDC_KEY;
+    private static final String MDC_KEY = TransactionIds.MDC_KEY;
 
     @Autowired
     private MockMvc mockMvc;

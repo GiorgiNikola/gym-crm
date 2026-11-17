@@ -36,7 +36,8 @@ public final class TestTokens {
         private String issuer = "gym-crm";
         private List<String> audience = List.of("workload-service");
         private String scope;
-        private Instant expiresAt = Instant.now().plusSeconds(300);
+        private Instant issuedAt = Instant.now();
+        private Instant expiresAt = issuedAt.plusSeconds(300);
 
         private Builder() {
         }
@@ -61,6 +62,11 @@ public final class TestTokens {
             return this;
         }
 
+        public Builder issuedAt(Instant issuedAt) {
+            this.issuedAt = issuedAt;
+            return this;
+        }
+
         public Builder expiresAt(Instant expiresAt) {
             this.expiresAt = expiresAt;
             return this;
@@ -71,7 +77,7 @@ public final class TestTokens {
                     .subject(SUBJECT)
                     .issuer(issuer)
                     .audience(audience)
-                    .issueTime(Date.from(Instant.now()))
+                    .issueTime(Date.from(issuedAt))
                     .expirationTime(expiresAt == null ? null : Date.from(expiresAt))
                     .claim("scope", scope)
                     .build();

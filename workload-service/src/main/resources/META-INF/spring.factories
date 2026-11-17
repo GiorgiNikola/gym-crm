@@ -1,2 +1,3 @@
 org.springframework.boot.EnvironmentPostProcessor=\
-com.giorgi.workload.config.RequiredJwtSecretProcessor
+com.giorgi.workload.config.RequiredJwtSecretProcessor,\
+com.giorgi.workload.config.RequiredBrokerVariablesProcessor

@@ -1,6 +1,15 @@
 workload:
   security:
     jwt-secret: test-only-workload-secret-0123456789abcdef
+  messaging:
+    concurrency: 1-1
+
+spring:
+  artemis:
+    mode: embedded
+  jms:
+    template:
+      receive-timeout: 10s
 
 eureka:
   client:

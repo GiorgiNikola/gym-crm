@@ -2,6 +2,13 @@ workload:
   security:
     jwt-secret: ${WORKLOAD_JWT_SECRET:local-development-only-workload-secret-change-me-0123456789}
 
+spring:
+  artemis:
+    mode: native
+    broker-url: ${ARTEMIS_URL:tcp://localhost:61616}
+    user: ${ARTEMIS_USER:local-development-only-artemis}
+    password: ${ARTEMIS_PASSWORD:local-development-only-artemis-password}
+
 logging:
   level:
     com.giorgi.workload: DEBUG

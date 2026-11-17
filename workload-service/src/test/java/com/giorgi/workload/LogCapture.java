@@ -7,12 +7,17 @@ import ch.qos.logback.core.read.ListAppender;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class LogCapture implements AutoCloseable {
 
     private final Logger logger;
     private final Level originalLevel;
     private final ListAppender<ILoggingEvent> appender = new ListAppender<>() {
+        {
+            list = new CopyOnWriteArrayList<>();
+        }
+
         @Override
         protected void append(ILoggingEvent event) {
             event.prepareForDeferredProcessing();
@@ -41,6 +46,13 @@ public final class LogCapture implements AutoCloseable {
     public List<String> messages(Level level) {
         return appender.list.stream()
                 .filter(event -> event.getLevel() == level)
+                .map(ILoggingEvent::getFormattedMessage)
+                .toList();
+    }
+
+    public List<String> messagesTagged(String mdcKey, String mdcValue) {
+        return appender.list.stream()
+                .filter(event -> mdcValue.equals(event.getMDCPropertyMap().get(mdcKey)))
                 .map(ILoggingEvent::getFormattedMessage)
                 .toList();
     }

@@ -87,4 +87,41 @@ class ProfileConfigTest {
                 property("application.yml", "eureka.client.instance-info-replication-interval-seconds"));
         Assertions.assertEquals("5", property("application.yml", "eureka.client.registry-fetch-interval-seconds"));
     }
+
+    @Test
+    @DisplayName("the local profile talks to a native broker on localhost with marked development credentials")
+    void localProfileUsesLocalBroker() throws IOException {
+        Assertions.assertEquals("native", property("application-local.yml", "spring.artemis.mode"));
+        Assertions.assertEquals("${ARTEMIS_URL:tcp://localhost:61616}",
+                property("application-local.yml", "spring.artemis.broker-url"));
+        Assertions.assertTrue(property("application-local.yml", "spring.artemis.user")
+                .startsWith("${ARTEMIS_USER:local-development-only"));
+        Assertions.assertTrue(property("application-local.yml", "spring.artemis.password")
+                .startsWith("${ARTEMIS_PASSWORD:local-development-only"));
+    }
+
+    @Test
+    @DisplayName("the docker profile takes every broker setting from the environment with no fallback")
+    void dockerProfileRequiresBrokerVariables() throws IOException {
+        Assertions.assertEquals("native", property("application-docker.yml", "spring.artemis.mode"));
+        Assertions.assertEquals("${ARTEMIS_URL}", property("application-docker.yml", "spring.artemis.broker-url"));
+        Assertions.assertEquals("${ARTEMIS_USER}", property("application-docker.yml", "spring.artemis.user"));
+        Assertions.assertEquals("${ARTEMIS_PASSWORD}", property("application-docker.yml", "spring.artemis.password"));
+    }
+
+    @Test
+    @DisplayName("the queues and a scalable consumer range are configured once for every profile")
+    void configuresMessagingDefaults() throws IOException {
+        Assertions.assertEquals("trainer.workload", property("application.yml", "workload.messaging.queue"));
+        Assertions.assertEquals("DLQ.trainer.workload",
+                property("application.yml", "workload.messaging.dead-letter-queue"));
+        Assertions.assertEquals("2-4", property("application.yml", "workload.messaging.concurrency"));
+    }
+
+    @Test
+    @DisplayName("the test profile runs an embedded broker with a single consumer")
+    void testProfileEmbedsBroker() throws IOException {
+        Assertions.assertEquals("embedded", property("application-test.yml", "spring.artemis.mode"));
+        Assertions.assertEquals("1-1", property("application-test.yml", "workload.messaging.concurrency"));
+    }
 }
