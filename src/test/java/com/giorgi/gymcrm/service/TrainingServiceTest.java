@@ -11,8 +11,8 @@ import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
 import com.giorgi.gymcrm.workload.ActionType;
+import com.giorgi.gymcrm.workload.WorkloadChange;
 import com.giorgi.gymcrm.workload.WorkloadChangedEvent;
-import com.giorgi.gymcrm.workload.WorkloadRequest;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -114,8 +114,12 @@ class TrainingServiceTest {
 
         trainingService.addTraining("John.Smith", "Sarah.Miller", "Morning Yoga", DATE, 60L);
 
-        verify(events).publishEvent(new WorkloadChangedEvent(new WorkloadRequest(
-                "Sarah.Miller", "Sarah", "Miller", true, DATE, 60, ActionType.ADD)));
+        ArgumentCaptor<WorkloadChangedEvent> published = ArgumentCaptor.forClass(WorkloadChangedEvent.class);
+        verify(events).publishEvent(published.capture());
+        Assertions.assertEquals(new WorkloadChange("Sarah.Miller", "Sarah", "Miller", true, DATE, 60, ActionType.ADD),
+                published.getValue().change());
+        Assertions.assertNotNull(published.getValue().eventId());
+        Assertions.assertNotNull(published.getValue().occurredAt());
     }
 
     @Test

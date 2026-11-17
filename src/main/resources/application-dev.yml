@@ -6,6 +6,11 @@ spring:
     password: ${DB_PASSWORD}
     hikari:
       maximum-pool-size: 5
+  artemis:
+    mode: native
+    broker-url: ${ARTEMIS_URL:tcp://localhost:61616}
+    user: ${ARTEMIS_USER:local-development-only-artemis}
+    password: ${ARTEMIS_PASSWORD:local-development-only-artemis-password}
   jpa:
     hibernate:
       ddl-auto: validate

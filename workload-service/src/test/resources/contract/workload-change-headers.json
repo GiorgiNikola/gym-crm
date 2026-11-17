@@ -1,0 +1,7 @@
+{
+  "eventType": "workloadChange",
+  "eventVersion": 1,
+  "transactionId": "contract-sample-transaction-0001",
+  "authorization": "<service token signed with WORKLOAD_JWT_SECRET, scope workload:write>",
+  "JMSXGroupID": "Sarah.Miller"
+}

@@ -9,8 +9,8 @@ import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.User;
 import com.giorgi.gymcrm.workload.ActionType;
+import com.giorgi.gymcrm.workload.WorkloadChange;
 import com.giorgi.gymcrm.workload.WorkloadChangedEvent;
-import com.giorgi.gymcrm.workload.WorkloadRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -99,12 +99,12 @@ public class TraineeService {
     @Transactional
     public void deleteByUsername(String username) {
         Trainee trainee = findOrThrow(username);
-        List<WorkloadRequest> removed = trainingDao.findTraineeTrainings(username, null, null, null, null)
+        List<WorkloadChange> removed = trainingDao.findTraineeTrainings(username, null, null, null, null)
                 .stream()
-                .map(training -> WorkloadRequest.of(training, ActionType.DELETE))
+                .map(training -> WorkloadChange.of(training, ActionType.DELETE))
                 .toList();
         traineeDao.delete(trainee);
-        removed.forEach(change -> events.publishEvent(new WorkloadChangedEvent(change)));
+        removed.forEach(change -> events.publishEvent(WorkloadChangedEvent.of(change)));
         log.info("Deleted trainee profile: {} with {} trainings", username, removed.size());
     }
 

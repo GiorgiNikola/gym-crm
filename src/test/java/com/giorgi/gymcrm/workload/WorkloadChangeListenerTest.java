@@ -14,15 +14,15 @@ import static org.mockito.Mockito.verify;
 class WorkloadChangeListenerTest {
 
     @Test
-    @DisplayName("a committed change goes to the gateway")
-    void forwardsTheChange() {
-        WorkloadGateway gateway = mock(WorkloadGateway.class);
-        WorkloadRequest change = new WorkloadRequest("Sarah.Miller", "Sarah", "Miller", true,
-                LocalDate.of(2026, 8, 1), 60, ActionType.DELETE);
+    @DisplayName("a committed change goes to the publisher with its event id")
+    void forwardsTheEvent() {
+        WorkloadPublisher publisher = mock(WorkloadPublisher.class);
+        WorkloadChangedEvent event = WorkloadChangedEvent.of(new WorkloadChange("Sarah.Miller", "Sarah", "Miller",
+                true, LocalDate.of(2026, 8, 1), 60, ActionType.DELETE));
 
-        new WorkloadChangeListener(gateway).onWorkloadChanged(new WorkloadChangedEvent(change));
+        new WorkloadChangeListener(publisher).onWorkloadChanged(event);
 
-        verify(gateway).send(change);
+        verify(publisher).publish(event);
     }
 
     @Test

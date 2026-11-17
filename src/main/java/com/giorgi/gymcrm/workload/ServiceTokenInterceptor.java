@@ -18,7 +18,7 @@ public class ServiceTokenInterceptor implements ClientHttpRequestInterceptor {
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
             throws IOException {
-        request.getHeaders().setBearerAuth(tokens.token());
+        request.getHeaders().setBearerAuth(tokens.readToken());
         return execution.execute(request, body);
     }
 }

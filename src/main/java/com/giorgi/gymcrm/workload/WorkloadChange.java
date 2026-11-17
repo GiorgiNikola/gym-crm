@@ -5,7 +5,7 @@ import com.giorgi.gymcrm.model.User;
 
 import java.time.LocalDate;
 
-public record WorkloadRequest(
+public record WorkloadChange(
         String trainerUsername,
         String trainerFirstName,
         String trainerLastName,
@@ -14,9 +14,9 @@ public record WorkloadRequest(
         int trainingDuration,
         ActionType actionType) {
 
-    public static WorkloadRequest of(Training training, ActionType actionType) {
+    public static WorkloadChange of(Training training, ActionType actionType) {
         User trainer = training.getTrainer().getUser();
-        return new WorkloadRequest(trainer.getUsername(), trainer.getFirstName(), trainer.getLastName(),
+        return new WorkloadChange(trainer.getUsername(), trainer.getFirstName(), trainer.getLastName(),
                 trainer.isActive(), training.getDate(), Math.toIntExact(training.getDuration()), actionType);
     }
 }

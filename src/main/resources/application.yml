@@ -33,6 +33,10 @@ management:
   endpoint:
     health:
       show-components: always
+  health:
+    # replaced by BrokerHealthIndicator, which reports UP with the broker state in its details
+    jms:
+      enabled: false
   metrics:
     tags:
       application: gym-crm
@@ -82,3 +86,5 @@ gymcrm:
     base-url: http://workload-service
     connect-timeout: 2s
     read-timeout: 3s
+    messaging:
+      queue: trainer.workload

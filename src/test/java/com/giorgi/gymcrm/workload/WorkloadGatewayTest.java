@@ -21,21 +21,15 @@ import org.springframework.web.client.ResourceAccessException;
 
 import java.net.ConnectException;
 import java.net.http.HttpTimeoutException;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Stream;
 
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class WorkloadGatewayTest {
 
     private static final String TRANSACTION_ID = "0b7e6c1a-1111-2222-3333-444455556666";
-    private static final WorkloadRequest ADD = new WorkloadRequest("Sarah.Miller", "Sarah", "Miller", true,
-            LocalDate.of(2026, 8, 1), 60, ActionType.ADD);
 
     private final WorkloadClient client = mock(WorkloadClient.class);
     private final CircuitBreakerRegistry registry = CircuitBreakerRegistry.ofDefaults();
@@ -54,60 +48,6 @@ class WorkloadGatewayTest {
                         "ConnectException"),
                 Arguments.of(new ResourceAccessException("I/O error", new HttpTimeoutException("request timed out")),
                         "HttpTimeoutException"));
-    }
-
-    @Test
-    @DisplayName("a change is handed to the client as it is")
-    void sendsTheChange() {
-        gateway.send(ADD);
-
-        verify(client).recordChange(ADD);
-    }
-
-    @ParameterizedTest
-    @MethodSource("unreachable")
-    @DisplayName("a failed send is logged as a warning with the transaction id and never thrown")
-    void logsAndSwallowsFailures(RuntimeException failure, String reason) {
-        MDC.put(TransactionIdFilter.MDC_KEY, TRANSACTION_ID);
-        doThrow(failure).when(client).recordChange(ADD);
-
-        try (LogCapture logs = LogCapture.of(WorkloadGateway.class)) {
-            Assertions.assertDoesNotThrow(() -> gateway.send(ADD));
-
-            Assertions.assertEquals(List.of("Workload change not sent: transactionId=" + TRANSACTION_ID
-                    + " action=ADD trainer=Sarah.Miller month=2026-08 minutes=60 reason=" + reason),
-                    logs.messages(Level.WARN));
-        }
-    }
-
-    @Test
-    @DisplayName("the warning names neither the trainer's names nor the token")
-    void warningLeavesOutPersonalData() {
-        doThrow(new ResourceAccessException("I/O error")).when(client).recordChange(ADD);
-
-        try (LogCapture logs = LogCapture.of(WorkloadGateway.class)) {
-            gateway.send(ADD);
-
-            String warning = logs.messages(Level.WARN).getFirst();
-            String withoutUsername = warning.replace("Sarah.Miller", "");
-            Assertions.assertFalse(withoutUsername.contains("Sarah"), warning);
-            Assertions.assertFalse(withoutUsername.contains("Miller"), warning);
-            Assertions.assertFalse(warning.contains("Bearer"), warning);
-            Assertions.assertTrue(warning.contains("transactionId=null"), warning);
-        }
-    }
-
-    @Test
-    @DisplayName("an open breaker skips the call and says so in the warning")
-    void openBreakerSkipsTheSend() {
-        registry.circuitBreaker(WorkloadGateway.BREAKER).transitionToOpenState();
-
-        try (LogCapture logs = LogCapture.of(WorkloadGateway.class)) {
-            gateway.send(ADD);
-
-            Assertions.assertTrue(logs.messages(Level.WARN).getFirst().endsWith("reason=circuit breaker open"));
-        }
-        verify(client, never()).recordChange(ADD);
     }
 
     @Test

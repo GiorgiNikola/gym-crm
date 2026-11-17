@@ -10,8 +10,8 @@ import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.model.User;
 import com.giorgi.gymcrm.workload.ActionType;
+import com.giorgi.gymcrm.workload.WorkloadChange;
 import com.giorgi.gymcrm.workload.WorkloadChangedEvent;
-import com.giorgi.gymcrm.workload.WorkloadRequest;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -257,14 +257,20 @@ class TraineeServiceTest {
 
         traineeService.deleteByUsername("John.Smith");
 
+        ArgumentCaptor<WorkloadChangedEvent> published = ArgumentCaptor.forClass(WorkloadChangedEvent.class);
         InOrder order = inOrder(trainingDao, traineeDao, events);
         order.verify(trainingDao).findTraineeTrainings("John.Smith", null, null, null, null);
         order.verify(traineeDao).delete(john);
-        order.verify(events).publishEvent(new WorkloadChangedEvent(new WorkloadRequest(
-                "Sarah.Miller", "Sarah", "Miller", true, LocalDate.of(2026, 8, 1), 60, ActionType.DELETE)));
-        order.verify(events).publishEvent(new WorkloadChangedEvent(new WorkloadRequest(
-                "Laura.Davis", "Laura", "Davis", false, LocalDate.of(2026, 9, 10), 45, ActionType.DELETE)));
+        order.verify(events, times(2)).publishEvent(published.capture());
         verifyNoMoreInteractions(events);
+        Assertions.assertEquals(List.of(
+                        new WorkloadChange("Sarah.Miller", "Sarah", "Miller", true, LocalDate.of(2026, 8, 1), 60,
+                                ActionType.DELETE),
+                        new WorkloadChange("Laura.Davis", "Laura", "Davis", false, LocalDate.of(2026, 9, 10), 45,
+                                ActionType.DELETE)),
+                published.getAllValues().stream().map(WorkloadChangedEvent::change).toList());
+        Assertions.assertNotEquals(published.getAllValues().get(0).eventId(),
+                published.getAllValues().get(1).eventId());
     }
 
     @Test

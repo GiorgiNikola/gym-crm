@@ -7,6 +7,12 @@ spring:
     password: ${DB_PASSWORD}
     hikari:
       maximum-pool-size: 20
+  # No defaults: RequiredBrokerVariablesProcessor stops the startup when one is missing.
+  artemis:
+    mode: native
+    broker-url: ${ARTEMIS_URL}
+    user: ${ARTEMIS_USER}
+    password: ${ARTEMIS_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: validate

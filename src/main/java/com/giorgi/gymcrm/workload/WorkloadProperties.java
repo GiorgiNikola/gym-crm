@@ -17,5 +17,32 @@ public record WorkloadProperties(
         Duration connectTimeout,
 
         @DefaultValue("3s")
-        Duration readTimeout) {
+        Duration readTimeout,
+
+        @DefaultValue
+        Messaging messaging) {
+
+    public record Messaging(
+
+            @DefaultValue("trainer.workload")
+            String queue,
+
+            @DefaultValue("1s")
+            Duration connectTimeout,
+
+            @DefaultValue("1s")
+            Duration callTimeout,
+
+            @DefaultValue("3")
+            int maxRetries,
+
+            @DefaultValue("200ms")
+            Duration initialDelay,
+
+            @DefaultValue("2")
+            double multiplier,
+
+            @DefaultValue("3s")
+            Duration retryBudget) {
+    }
 }

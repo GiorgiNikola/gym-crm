@@ -28,20 +28,6 @@ public class WorkloadGateway {
         this.breaker = circuitBreakerFactory.create(BREAKER);
     }
 
-    public void send(WorkloadRequest change) {
-        breaker.run(() -> {
-            client.recordChange(change);
-            log.debug("Sent {} of {} minutes for trainer {}", change.actionType(), change.trainingDuration(),
-                    change.trainerUsername());
-            return null;
-        }, failure -> {
-            log.warn("Workload change not sent: transactionId={} action={} trainer={} month={} minutes={} reason={}",
-                    transactionId(), change.actionType(), change.trainerUsername(),
-                    YearMonth.from(change.trainingDate()), change.trainingDuration(), reason(failure));
-            return null;
-        });
-    }
-
     public long monthlyMinutes(String username, int year, int month) {
         return breaker.run(() -> fetchMonthlyMinutes(username, year, month), failure -> {
             log.warn("Workload not read: transactionId={} trainer={} month={} reason={}",

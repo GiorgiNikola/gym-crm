@@ -4,7 +4,6 @@ import ch.qos.logback.classic.Level;
 import com.giorgi.gymcrm.AdjustableClock;
 import com.giorgi.gymcrm.LogCapture;
 import com.giorgi.gymcrm.exception.WorkloadUnavailableException;
-import com.giorgi.gymcrm.web.TransactionIdFilter;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -14,7 +13,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
-import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -22,7 +20,6 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,9 +31,7 @@ import java.util.concurrent.TimeUnit;
 class WorkloadClientTest {
 
     private static final String SECRET = "test-only-workload-secret-0123456789abcdef";
-    private static final String TRANSACTION_ID = "9d2f8a7e-1234-5678-9abc-def012345678";
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, String> received = new ConcurrentHashMap<>();
     private final CountDownLatch release = new CountDownLatch(1);
     private final ExecutorService handlers = Executors.newCachedThreadPool();
@@ -54,7 +49,7 @@ class WorkloadClientTest {
         server.start();
 
         properties = new WorkloadProperties("http://localhost:" + server.getAddress().getPort(), SECRET,
-                Duration.ofSeconds(2), Duration.ofSeconds(3));
+                Duration.ofSeconds(2), Duration.ofSeconds(3), null);
         tokens = new ServiceTokenProvider(properties, new AdjustableClock(Instant.now()));
         client = WorkloadClientConfig.createClient(WorkloadClientConfig.restClientBuilder(properties), tokens);
     }
@@ -71,21 +66,15 @@ class WorkloadClientTest {
         received.put("method", exchange.getRequestMethod());
         received.put("path", exchange.getRequestURI().getPath());
         received.put("authorization", String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
-        received.put("transactionId", String.valueOf(exchange.getRequestHeaders().getFirst("X-Transaction-Id")));
-        received.put("body", new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
 
         if (exchange.getRequestURI().getPath().startsWith("/workloads/Slow.Trainer/")) {
             awaitRelease();
         }
-        if ("GET".equals(exchange.getRequestMethod())) {
-            byte[] body = "{\"trainerUsername\":\"Sarah.Miller\",\"year\":2026,\"month\":8,\"trainingSummaryDuration\":150}"
-                    .getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, body.length);
-            exchange.getResponseBody().write(body);
-        } else {
-            exchange.sendResponseHeaders(200, -1);
-        }
+        byte[] body = "{\"trainerUsername\":\"Sarah.Miller\",\"year\":2026,\"month\":8,\"trainingSummaryDuration\":150}"
+                .getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, body.length);
+        exchange.getResponseBody().write(body);
         exchange.close();
     }
 
@@ -98,24 +87,6 @@ class WorkloadClientTest {
     }
 
     @Test
-    @DisplayName("POST /workloads carries the exact payload, the service token and the transaction id")
-    void postsTheChange() throws Exception {
-        MDC.put(TransactionIdFilter.MDC_KEY, TRANSACTION_ID);
-
-        client.recordChange(new WorkloadRequest("Sarah.Miller", "Sarah", "Miller", true,
-                LocalDate.of(2026, 8, 1), 60, ActionType.ADD));
-
-        Assertions.assertEquals("POST", received.get("method"));
-        Assertions.assertEquals("/workloads", received.get("path"));
-        Assertions.assertEquals("Bearer " + tokens.token(), received.get("authorization"));
-        Assertions.assertEquals(TRANSACTION_ID, received.get("transactionId"));
-        Assertions.assertEquals(objectMapper.readTree("""
-                {"trainerUsername":"Sarah.Miller","trainerFirstName":"Sarah","trainerLastName":"Miller",
-                 "isActive":true,"trainingDate":"2026-08-01","trainingDuration":60,"actionType":"ADD"}
-                """), objectMapper.readTree(received.get("body")));
-    }
-
-    @Test
     @DisplayName("GET /workloads/{username}/{year}/{month} is read into the monthly summary")
     void readsTheMonth() {
         MonthlyWorkloadResponse month = client.getMonthlyWorkload("Sarah.Miller", 2026, 8);
@@ -123,7 +94,7 @@ class WorkloadClientTest {
         Assertions.assertEquals(new MonthlyWorkloadResponse("Sarah.Miller", 2026, 8, 150), month);
         Assertions.assertEquals("GET", received.get("method"));
         Assertions.assertEquals("/workloads/Sarah.Miller/2026/8", received.get("path"));
-        Assertions.assertEquals("Bearer " + tokens.token(), received.get("authorization"));
+        Assertions.assertEquals("Bearer " + tokens.readToken(), received.get("authorization"));
     }
 
     @Test

@@ -36,7 +36,7 @@ class WorkloadInterceptorsTest {
     @DisplayName("the service token goes out as a bearer token")
     void addsTheBearerToken() throws Exception {
         ServiceTokenProvider tokens = mock(ServiceTokenProvider.class);
-        when(tokens.token()).thenReturn("service.token.value");
+        when(tokens.readToken()).thenReturn("service.token.value");
         when(execution.execute(request, BODY)).thenReturn(response);
 
         Assertions.assertSame(response, new ServiceTokenInterceptor(tokens).intercept(request, BODY, execution));

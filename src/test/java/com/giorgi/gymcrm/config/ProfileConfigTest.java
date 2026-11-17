@@ -239,4 +239,38 @@ class ProfileConfigTest {
         Assertions.assertEquals(String.valueOf(workloadLocal.getProperty("workload.security.jwt-secret")),
                 property("local", "gymcrm.workload.jwt-secret"));
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"local", "dev", "standalone"})
+    @DisplayName("a development profile talks to a native broker on this machine with marked credentials")
+    void developmentProfilesUseALocalBroker(String profile) throws IOException {
+        Assertions.assertEquals("native", property(profile, "spring.artemis.mode"));
+        Assertions.assertEquals("${ARTEMIS_URL:tcp://localhost:61616}", property(profile, "spring.artemis.broker-url"));
+        Assertions.assertEquals("${ARTEMIS_USER:local-development-only-artemis}",
+                property(profile, "spring.artemis.user"));
+        Assertions.assertEquals("${ARTEMIS_PASSWORD:local-development-only-artemis-password}",
+                property(profile, "spring.artemis.password"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"stg", "prod"})
+    @DisplayName("staging and production take the broker from the environment only")
+    void deployedProfilesRequireTheBroker(String profile) throws IOException {
+        Assertions.assertEquals("native", property(profile, "spring.artemis.mode"));
+        Assertions.assertEquals("${ARTEMIS_URL}", property(profile, "spring.artemis.broker-url"));
+        Assertions.assertEquals("${ARTEMIS_USER}", property(profile, "spring.artemis.user"));
+        Assertions.assertEquals("${ARTEMIS_PASSWORD}", property(profile, "spring.artemis.password"));
+    }
+
+    @Test
+    @DisplayName("the development broker credentials are the ones workload-service falls back on locally")
+    void developmentBrokerMatchesWorkloadService() throws IOException {
+        PropertySource<?> workloadLocal = new YamlPropertySourceLoader()
+                .load("workload-local", new FileSystemResource("workload-service/src/main/resources/application-local.yml"))
+                .get(0);
+
+        for (String key : List.of("spring.artemis.broker-url", "spring.artemis.user", "spring.artemis.password")) {
+            Assertions.assertEquals(String.valueOf(workloadLocal.getProperty(key)), property("local", key), key);
+        }
+    }
 }

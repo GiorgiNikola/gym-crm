@@ -7,14 +7,14 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @Component
 public class WorkloadChangeListener {
 
-    private final WorkloadGateway gateway;
+    private final WorkloadPublisher publisher;
 
-    public WorkloadChangeListener(WorkloadGateway gateway) {
-        this.gateway = gateway;
+    public WorkloadChangeListener(WorkloadPublisher publisher) {
+        this.publisher = publisher;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onWorkloadChanged(WorkloadChangedEvent event) {
-        gateway.send(event.change());
+        publisher.publish(event);
     }
 }

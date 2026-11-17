@@ -9,8 +9,8 @@ import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.workload.ActionType;
+import com.giorgi.gymcrm.workload.WorkloadChange;
 import com.giorgi.gymcrm.workload.WorkloadChangedEvent;
-import com.giorgi.gymcrm.workload.WorkloadRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -76,7 +76,7 @@ public class TrainingService {
 
         trainingDao.save(training);
         gymMetrics.trainingAdded(duration);
-        events.publishEvent(new WorkloadChangedEvent(WorkloadRequest.of(training, ActionType.ADD)));
+        events.publishEvent(WorkloadChangedEvent.of(WorkloadChange.of(training, ActionType.ADD)));
         log.info("Added training '{}' for trainee {} with trainer {}", name, traineeUsername, trainerUsername);
         return training;
     }
