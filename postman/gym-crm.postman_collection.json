@@ -3447,7 +3447,7 @@
       "response": []
     },
     {
-      "name": "Workload - Add training sends ADD",
+      "name": "Workload - Add training publishes ADD",
       "event": [
         {
           "script": {
@@ -3494,7 +3494,8 @@
           "path": [
             "trainings"
           ]
-        }
+        },
+        "description": "gym-crm commits the training, then publishes an ADD event to the trainer.workload queue. 200 means the training is saved and the event is on its way, not that workload-service has applied it yet."
       },
       "response": []
     },
@@ -3504,8 +3505,27 @@
         {
           "script": {
             "exec": [
-              "pm.test('200 OK', () => pm.response.to.have.status(200));",
-              "pm.test('75 minutes in September', () => pm.expect(pm.response.json().trainingSummaryDuration).to.equal(75));"
+              "const expected = 75;",
+              "const maxReads = 10;",
+              "const reached = res => res.code === 200 && res.json().trainingSummaryDuration === expected;",
+              "",
+              "const assertOn = res => {",
+              "    pm.test('200 OK', () => pm.expect(res.code).to.equal(200));",
+              "    pm.test('75 minutes in September', () => pm.expect(res.json().trainingSummaryDuration).to.equal(expected));",
+              "};",
+              "",
+              "const readAgain = attempt => setTimeout(() => pm.sendRequest({",
+              "    url: pm.variables.replaceIn(pm.request.url.toString()),",
+              "    method: 'GET',",
+              "    header: { Authorization: 'Bearer ' + pm.variables.get('workloadTrainerToken') }",
+              "}, (err, res) => {",
+              "    if (err || (!reached(res) && attempt < maxReads)) {",
+              "        return attempt < maxReads ? readAgain(attempt + 1) : assertOn(pm.response);",
+              "    }",
+              "    assertOn(res);",
+              "}), 300);",
+              "",
+              "reached(pm.response) ? assertOn(pm.response) : readAgain(2);"
             ],
             "type": "text/javascript"
           },
@@ -3537,7 +3557,8 @@
             "2026",
             "9"
           ]
-        }
+        },
+        "description": "The ADD travels through the trainer.workload queue, so the total is eventually consistent. If the first read is not 75 yet, the script reads again every 300 ms, up to 10 times, before asserting."
       },
       "response": []
     },
@@ -3669,7 +3690,7 @@
       "response": []
     },
     {
-      "name": "Workload - Delete trainee sends DELETE",
+      "name": "Workload - Delete trainee publishes DELETE",
       "event": [
         {
           "script": {
@@ -3703,7 +3724,8 @@
             "trainees",
             "{{workloadTraineeUsername}}"
           ]
-        }
+        },
+        "description": "Deleting the trainee removes their trainings and publishes one DELETE event per training to the trainer.workload queue after commit."
       },
       "response": []
     },
@@ -3711,14 +3733,33 @@
       "name": "Workload - Deleting the trainee removed the minutes",
       "event": [
         {
-          "listen": "test",
           "script": {
-            "type": "text/javascript",
             "exec": [
-              "pm.test('200 OK', () => pm.response.to.have.status(200));",
-              "pm.test('back to 0 minutes', () => pm.expect(pm.response.json().trainingSummaryDuration).to.equal(0));"
-            ]
-          }
+              "const expected = 0;",
+              "const maxReads = 10;",
+              "const reached = res => res.code === 200 && res.json().trainingSummaryDuration === expected;",
+              "",
+              "const assertOn = res => {",
+              "    pm.test('200 OK', () => pm.expect(res.code).to.equal(200));",
+              "    pm.test('back to 0 minutes', () => pm.expect(res.json().trainingSummaryDuration).to.equal(expected));",
+              "};",
+              "",
+              "const readAgain = attempt => setTimeout(() => pm.sendRequest({",
+              "    url: pm.variables.replaceIn(pm.request.url.toString()),",
+              "    method: 'GET',",
+              "    header: { Authorization: 'Bearer ' + pm.variables.get('workloadTrainerToken') }",
+              "}, (err, res) => {",
+              "    if (err || (!reached(res) && attempt < maxReads)) {",
+              "        return attempt < maxReads ? readAgain(attempt + 1) : assertOn(pm.response);",
+              "    }",
+              "    assertOn(res);",
+              "}), 300);",
+              "",
+              "reached(pm.response) ? assertOn(pm.response) : readAgain(2);"
+            ],
+            "type": "text/javascript"
+          },
+          "listen": "test"
         }
       ],
       "request": {
@@ -3746,7 +3787,8 @@
             "2026",
             "9"
           ]
-        }
+        },
+        "description": "The DELETE travels through the trainer.workload queue, so the total is eventually consistent. If the first read is not 0 yet, the script reads again every 300 ms, up to 10 times, before asserting."
       },
       "response": []
     },
