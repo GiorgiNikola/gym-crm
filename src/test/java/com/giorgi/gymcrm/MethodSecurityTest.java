@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -239,6 +240,28 @@ class MethodSecurityTest {
                 .andExpect(status().isForbidden());
 
         verify(gymCrmFacade, never()).addTraining(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @WithMockUser(username = SELF)
+    @DisplayName("a trainer may read their own monthly workload")
+    void allowsReadingOwnWorkload() throws Exception {
+        when(gymCrmFacade.getTrainerMonthlyWorkload(SELF, 2026, 8)).thenReturn(90L);
+
+        mockMvc.perform(get("/trainers/{username}/workload/{year}/{month}", SELF, 2026, 8))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.trainingSummaryDuration").value(90));
+    }
+
+    @Test
+    @WithMockUser(username = SELF)
+    @DisplayName("reading another trainer's monthly workload is a 403 that never reaches the facade")
+    void deniesReadingSomebodyElsesWorkload() throws Exception {
+        mockMvc.perform(get("/trainers/{username}/workload/{year}/{month}", SOMEBODY_ELSE, 2026, 8))
+                .andExpect(status().isForbidden());
+
+        verify(gymCrmFacade, never()).getTrainerMonthlyWorkload(anyString(), anyInt(),
+                anyInt());
     }
 
     @Test

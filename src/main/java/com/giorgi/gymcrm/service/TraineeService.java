@@ -2,12 +2,17 @@ package com.giorgi.gymcrm.service;
 
 import com.giorgi.gymcrm.dao.TraineeDao;
 import com.giorgi.gymcrm.dao.TrainerDao;
+import com.giorgi.gymcrm.dao.TrainingDao;
 import com.giorgi.gymcrm.exception.ProfileNotFoundException;
 import com.giorgi.gymcrm.metrics.GymMetrics;
 import com.giorgi.gymcrm.model.Trainee;
 import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.User;
+import com.giorgi.gymcrm.workload.ActionType;
+import com.giorgi.gymcrm.workload.WorkloadChange;
+import com.giorgi.gymcrm.workload.WorkloadChangedEvent;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,15 +32,21 @@ public class TraineeService {
     private final TrainerDao trainerDao;
     private final GymMetrics gymMetrics;
     private final UserFactory userFactory;
+    private final TrainingDao trainingDao;
+    private final ApplicationEventPublisher events;
 
     public TraineeService(TraineeDao traineeDao,
                           TrainerDao trainerDao,
                           GymMetrics gymMetrics,
-                          UserFactory userFactory) {
+                          UserFactory userFactory,
+                          TrainingDao trainingDao,
+                          ApplicationEventPublisher events) {
         this.traineeDao = traineeDao;
         this.trainerDao = trainerDao;
         this.gymMetrics = gymMetrics;
         this.userFactory = userFactory;
+        this.trainingDao = trainingDao;
+        this.events = events;
     }
 
     @Transactional
@@ -88,8 +99,13 @@ public class TraineeService {
     @Transactional
     public void deleteByUsername(String username) {
         Trainee trainee = findOrThrow(username);
+        List<WorkloadChange> removed = trainingDao.findTraineeTrainings(username, null, null, null, null)
+                .stream()
+                .map(training -> WorkloadChange.of(training, ActionType.DELETE))
+                .toList();
         traineeDao.delete(trainee);
-        log.info("Deleted trainee profile: {}", username);
+        removed.forEach(change -> events.publishEvent(WorkloadChangedEvent.of(change)));
+        log.info("Deleted trainee profile: {} with {} trainings", username, removed.size());
     }
 
     @Transactional

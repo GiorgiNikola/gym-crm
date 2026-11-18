@@ -1,0 +1,20 @@
+workload:
+  security:
+    jwt-secret: ${WORKLOAD_JWT_SECRET}
+
+spring:
+  artemis:
+    mode: native
+    broker-url: ${ARTEMIS_URL}
+    user: ${ARTEMIS_USER}
+    password: ${ARTEMIS_PASSWORD}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL}
+
+management:
+  endpoint:
+    health:
+      show-details: never

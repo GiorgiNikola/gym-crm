@@ -1,0 +1,11 @@
+{
+  "eventId": "3f1c9a52-7d0e-4b8a-9c61-2e5f8d4a7b10",
+  "occurredAt": "2026-08-01T09:15:30.123456Z",
+  "trainerUsername": "Sarah.Miller",
+  "trainerFirstName": "Sarah",
+  "trainerLastName": "Miller",
+  "isActive": true,
+  "trainingDate": "2026-08-01",
+  "trainingDuration": 60,
+  "actionType": "ADD"
+}

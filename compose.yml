@@ -1,0 +1,134 @@
+x-spring-healthcheck: &spring-healthcheck
+  interval: 10s
+  timeout: 3s
+  retries: 3
+  start_period: 90s
+  # Probes every 2 seconds while starting, so a dependent service is not held back by the 10s interval.
+  start_interval: 2s
+
+services:
+  db:
+    image: postgres:17.11
+    container_name: gymcrm-db
+    env_file: .env.docker
+    networks: [gymcrm-net]
+    volumes:
+      - gymcrm-pgdata:/var/lib/postgresql/data
+    # No ports: the database is reachable from the app container and nowhere else.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  artemis:
+    image: apache/activemq-artemis:2.44.0
+    container_name: artemis
+    # ARTEMIS_USER and ARTEMIS_PASSWORD. The image bakes them into the instance the first time it creates it, so
+    # a new password needs a new gymcrm-artemis-data volume.
+    env_file: .env.broker.docker
+    environment:
+      ANONYMOUS_LOGIN: "false"
+      # Wins over the instance's own log4j2 file, so the AMQ222149 filter applies on every start.
+      JAVA_ARGS_APPEND: -Dlog4j2.configurationFile=file:/opt/gymcrm/artemis/log4j2.properties
+    # The image copies etc-override only when it creates the instance, which then lives on in the volume;
+    # --properties reads the mounted file on every start instead.
+    command: ["run", "--properties", "/opt/gymcrm/artemis/broker.properties"]
+    networks: [gymcrm-net]
+    volumes:
+      - ./docker/artemis:/opt/gymcrm/artemis:ro
+      # The whole instance, not only data/: a fresh named volume takes the image's artemis-owned directory,
+      # a volume mounted on the missing data/ would be owned by root.
+      - gymcrm-artemis-data:/var/lib/artemis-instance
+    # 61616 stays on the compose network; only the web console is published, for the demo.
+    ports:
+      - "127.0.0.1:8161:8161"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/var/lib/artemis-instance/bin/artemis check node --up --silent --url tcp://localhost:61616 --user \"$${ARTEMIS_USER}\" --password \"$${ARTEMIS_PASSWORD}\" > /dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+      start_interval: 2s
+
+  discovery-server:
+    build: ./discovery-server
+    image: discovery-server:latest
+    container_name: discovery-server
+    networks: [gymcrm-net]
+    ports:
+      - "8761:8761"
+    restart: unless-stopped
+    healthcheck:
+      <<: *spring-healthcheck
+      test: ["CMD", "curl", "-fsS", "http://localhost:8761/actuator/health"]
+
+  workload-service:
+    build: ./workload-service
+    image: workload-service:latest
+    container_name: workload-service
+    # The service secret and the broker credentials: workload-service has no database and gets no DB credentials.
+    env_file: [.env.services.docker, .env.broker.docker]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_URL: http://discovery-server:8761/eureka
+      EUREKA_INSTANCE_HOSTNAME: workload-service
+      # consumerWindowSize=0: no prefetch, so competing consumers take messages as they become free.
+      ARTEMIS_URL: tcp://artemis:61616?connect-timeout-millis=1000&callTimeout=1000&useTopologyForLoadBalancing=false&consumerWindowSize=0
+      WORKLOAD_MESSAGING_CONCURRENCY: ${WORKLOAD_MESSAGING_CONCURRENCY:-2-4}
+      # The demo reads the broker state from /actuator/health; the docker profile alone hides details.
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+    networks: [gymcrm-net]
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      artemis:
+        condition: service_healthy
+    healthcheck:
+      <<: *spring-healthcheck
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/actuator/health"]
+
+  app:
+    build: .
+    image: gym-crm:latest
+    container_name: gym-crm
+    env_file: [.env.docker, .env.services.docker, .env.broker.docker]
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      EUREKA_URL: http://discovery-server:8761/eureka
+      EUREKA_INSTANCE_HOSTNAME: app
+      ARTEMIS_URL: tcp://artemis:61616?connect-timeout-millis=1000&callTimeout=1000&useTopologyForLoadBalancing=false
+    networks: [gymcrm-net]
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    # Not on workload-service: the app serves requests without it and catches up through Eureka.
+    depends_on:
+      db:
+        # Waits for pg_isready, not just for the container to exist.
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      artemis:
+        condition: service_healthy
+    healthcheck:
+      <<: *spring-healthcheck
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+
+networks:
+  gymcrm-net:
+    # Without an explicit name compose would prefix it with the project name.
+    name: gymcrm-net
+
+volumes:
+  gymcrm-pgdata:
+    # Same volume the plain docker commands use, so the data carries over.
+    name: gymcrm-pgdata
+
+  gymcrm-artemis-data:
+    name: gymcrm-artemis-data

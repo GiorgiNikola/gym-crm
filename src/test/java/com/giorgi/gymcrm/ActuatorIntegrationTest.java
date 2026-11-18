@@ -61,7 +61,10 @@ class ActuatorIntegrationTest {
                 .andExpect(jsonPath("$.components.trainingTypes.status").value("UP"))
                 .andExpect(jsonPath("$.components.trainingTypes.details.count").value(5))
                 .andExpect(jsonPath("$.components.databaseLatency.status").value("UP"))
-                .andExpect(jsonPath("$.components.databaseLatency.details.latencyMs").exists());
+                .andExpect(jsonPath("$.components.databaseLatency.details.latencyMs").exists())
+                .andExpect(jsonPath("$.components.broker.status").value("UP"))
+                .andExpect(jsonPath("$.components.broker.details.reachable").value(true))
+                .andExpect(jsonPath("$.components.jms").doesNotExist());
     }
 
     @Test

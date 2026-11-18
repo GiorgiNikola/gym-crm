@@ -76,6 +76,12 @@ public class TrainerService {
         return updated;
     }
 
+    @Transactional(readOnly = true)
+    public void requireExists(String username) {
+        trainerDao.findByUsername(username)
+                .orElseThrow(() -> new ProfileNotFoundException("Trainer not found: " + username));
+    }
+
     private Trainer findProfileOrThrow(String username) {
         return trainerDao.findProfileByUsername(username)
                 .orElseThrow(() -> new ProfileNotFoundException("Trainer not found: " + username));

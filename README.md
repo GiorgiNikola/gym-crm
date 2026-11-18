@@ -1,10 +1,39 @@
 # Gym CRM
 
-Trainees and trainers register, log in, manage their profiles, pick trainers and log trainings, all over HTTP. Data is stored in PostgreSQL. Spring Boot application with four environment profiles plus a standalone one for Docker, Flyway migrations, actuator health and Prometheus metrics, Swagger UI, and Spring Security with JWT bearer tokens.
+Trainees and trainers register, log in, manage their profiles, pick trainers and log trainings, all over HTTP. Data is stored in PostgreSQL. Spring Boot application with four environment profiles plus a standalone one for Docker, Flyway migrations, actuator health and Prometheus metrics, Swagger UI, and Spring Security with JWT bearer tokens. Since the Microservices module it is one of three services. Since the Messaging module it sends trainer workload changes to the second service through an ActiveMQ Artemis queue and reads the totals back over REST, finding that service through Eureka.
+
+## Architecture
+
+| Service | Folder | Purpose | Port | Base package |
+|---|---|---|---|---|
+| gym-crm | `/` (root) | Trainees, trainers, trainings, authentication; owns the PostgreSQL data | 8080 | `com.giorgi.gymcrm` |
+| workload-service | `workload-service/` | Monthly training minutes per trainer, in memory | 8081 | `com.giorgi.workload` |
+| discovery-server | `discovery-server/` | Eureka registry | 8761 | `com.giorgi.discovery` |
+
+```
+client --JWT--> gym-crm :8080 --resolves "workload-service"--> Eureka :8761
+                    |   |                                          |
+                    |   | reads: REST, service JWT (workload:read) | instance list
+                    |   +-----------------------------------> workload-service :8081
+                    |                                                  ^
+                    | writes: JMS, service JWT (workload:write)        | consumes
+                    +------------> Artemis :61616 [trainer.workload] --+
+```
+
+Workload writes go through the broker; see Messaging. gym-crm never has a workload-service address
+configured. For reads it calls `http://workload-service`, and the
+load balancer replaces the name with an instance Eureka knows about. Both clients register with
+Eureka and fetch the registry from it.
+
+**Repo layout.** One repository with sibling folders and no parent pom. Each service has its own pom,
+Dockerfile and image, so it builds and tests on its own (`./mvnw -f workload-service/pom.xml verify`),
+while one `compose.yml` runs the whole environment and one owner keeps the three in step. Services share
+no code: a class two services need is copied and adapted, so no change to one can break the build of
+another. A parent pom or shared module would couple the builds this module is trying to keep apart.
 
 ## Stack
 
-Java 21 and Spring Boot 4.0.8. The versions Boot manages, from `./mvnw dependency:tree`:
+Java 21 and Spring Boot 4.0.8, Spring Cloud 2025.1.3 for Eureka, the load balancer and the circuit breaker, ActiveMQ Artemis (client 2.43.0, broker image 2.44.0) through `spring-boot-starter-artemis`. The versions Boot manages, from `./mvnw dependency:tree`:
 
 | Part | Version |
 |---|---|
@@ -90,6 +119,7 @@ That also writes the coverage report to `target/site/jacoco/index.html`.
 | Health details | always | always | never, components only | never, components only |
 | Swagger UI | on | on | off | off |
 | JWT secret | `JWT_SECRET` or a development default | `JWT_SECRET` or a development default | `JWT_SECRET` | `JWT_SECRET` |
+| Workload service token secret | `WORKLOAD_JWT_SECRET` or a development default | `WORKLOAD_JWT_SECRET` or a development default | `WORKLOAD_JWT_SECRET` | `WORKLOAD_JWT_SECRET` |
 | CORS origins | `localhost:3000`, `localhost:4200` | `localhost:3000`, `localhost:4200` | none | none |
 
 A fifth profile, `standalone`, is the default inside the Docker image: in-memory H2, the development JWT secret and the same CORS origins as local. See Running in Docker.
@@ -239,10 +269,34 @@ docker rm -f gym-crm gymcrm-db
 docker network rm gymcrm-net
 ```
 
-The same thing with compose:
+### The full stack with compose
+
+`compose.yml` runs five services on the `gymcrm-net` network:
+
+| Service | Container | Port on the host | Health |
+|---|---|---|---|
+| `db` | `gymcrm-db` | none | `pg_isready` |
+| `artemis` | `artemis` | 8161 (console, 127.0.0.1 only) | `artemis check node --up` |
+| `discovery-server` | `discovery-server` | 8761 | http://localhost:8761/actuator/health |
+| `workload-service` | `workload-service` | 8081 | http://localhost:8081/actuator/health |
+| `app` | `gym-crm` | 8080 | http://localhost:8080/actuator/health |
+
+Each Spring service is its own image, built from its own folder. Compose also needs a second
+env file for the service secret:
+
+```bash
+cp .env.services.docker.example .env.services.docker
+```
+
+It holds `WORKLOAD_JWT_SECRET`, the secret gym-crm signs its service token with and
+workload-service checks it with; generate one with `openssl rand -base64 48`. It is git ignored
+like `.env.docker`. A third one, `.env.broker.docker` from `.env.broker.docker.example`, holds the broker
+credentials (see Messaging, Docker). The app gets all three, workload-service the service and broker
+files, so it never sees the database credentials.
 
 ```bash
 docker compose up -d --build
+docker compose ps
 docker compose down
 ```
 
@@ -253,9 +307,30 @@ database wiped too:
 docker compose down -v
 ```
 
-Compose waits for the database: the `db` service has a `pg_isready` healthcheck and the `app`
-service depends on it with `condition: service_healthy`, so the app never starts against a
-database that is not accepting connections yet.
+Nothing is assumed ready just because its container started. Every service has a healthcheck,
+probed every 2 seconds while it starts, and `depends_on` waits for `service_healthy`: the app
+waits for the database, Eureka and the broker, workload-service waits for Eureka and the broker. The
+app does not wait for workload-service. Changes queue up in `trainer.workload` while it is missing,
+and only the monthly read, which it finds through Eureka by the name `workload-service`, answers 503.
+
+Both clients get `EUREKA_URL=http://discovery-server:8761/eureka` and register under their
+compose service name through `EUREKA_INSTANCE_HOSTNAME` (`app`, `workload-service`; `localhost`
+outside Docker). No container IPs appear anywhere. The Eureka dashboard is at
+http://localhost:8761. The three Spring services restart `unless-stopped`; when Eureka comes
+back, both clients re-register on their next 5 second heartbeat. Eureka serves reads without
+its 30 second read-only cache, so a registration shows up on the next client fetch.
+
+workload-service runs on its own as well. Its image defaults to the `docker` profile, which has
+no fallback for `WORKLOAD_JWT_SECRET` or `EUREKA_URL`, so both are required:
+
+```bash
+docker run --rm -d --name workload-service -p 8081:8081 \
+  -e WORKLOAD_JWT_SECRET="$(openssl rand -base64 48)" \
+  -e EUREKA_URL=http://localhost:8761/eureka workload-service:latest
+```
+
+Without a reachable Eureka it still starts and answers health; it keeps retrying in the
+background.
 
 ### Why gymcrm-db and not localhost
 
@@ -277,7 +352,7 @@ docker exec gymcrm-db psql -U gymcrm -d gymcrm -c "select username from users;"
 
 ### Logs
 
-The container logs to the console and to a rolling file at `/app/logs/gym-crm.log`, capped at
+gym-crm logs to the console and to a rolling file at `/app/logs/gym-crm.log`, capped at
 10 MB with 3 files kept. Only the image turns the file on, through `LOGGING_CONFIG` and
 `LOGGING_FILE_NAME`, so running the app on your machine writes no files.
 
@@ -301,6 +376,14 @@ curl -i http://localhost:8080/training-types \
 docker exec gym-crm grep demo-123 /app/logs/gym-crm.log
 ```
 
+workload-service does the same, into `/app/logs/workload-service.log`, and logs the transaction
+id gym-crm forwards, so one id follows a request across both services:
+
+```bash
+docker logs gym-crm 2>&1 | grep demo-123
+docker logs workload-service 2>&1 | grep demo-123
+```
+
 Passwords and tokens are masked and headers are never logged, so the file holds no credentials.
 
 ### The image
@@ -311,13 +394,12 @@ last, so a code change rebuilds a few hundred kB instead of the whole thing. It 
 non-root user `gymcrm`, and a HEALTHCHECK calls `/actuator/health`, which is what compose waits
 on.
 
-The Report service and the message queue are not built yet. When they are, they join the same
-`gymcrm-net` network and reach the app by container name, the same way the app reaches the
-database.
+The discovery-server and workload-service images are built the same way and run as the
+non-root users `discovery` and `workload`.
 
 ## Trying it
 
-`postman/gym-crm.postman_collection.json` holds 72 requests with assertions on every one. Import it, start the app with the local or dev profile, and run the whole collection with the Collection Runner. It registers fresh users on every run, so you can run it again without restarting.
+`postman/gym-crm.postman_collection.json` holds 82 requests with assertions on every one. Ten of them, prefixed "Workload - ", cover the trainer workload endpoint, trainee deletion (which sends the DELETE changes) and a direct call to workload-service without a token (401). Import it, start the app with the local or dev profile, and run the whole collection with the Collection Runner. It registers fresh users on every run, so you can run it again without restarting.
 
 The registration and login requests save the returned tokens into collection variables, and every other request sends the matching one as `Authorization: Bearer`. You never copy a token by hand. The collection also walks through the lockout (three wrong logins, then 429), logout, and a CORS preflight. The CORS check only passes on local and dev, the profiles with allowed origins.
 
@@ -338,6 +420,7 @@ The registration and login requests save the returned tokens into collection var
 | 11 | PUT | `/trainees/{username}/trainers` | token, self | 200 |
 | 12 | GET | `/trainees/{username}/trainings` | token, self | 200 |
 | 13 | GET | `/trainers/{username}/trainings` | token, self | 200 |
+| | GET | `/trainers/{username}/workload/{year}/{month}` | token, self | 200, minutes read from workload-service; 503 when it is unavailable |
 | 14 | POST | `/trainings` | token, caller is the trainee or the trainer | 200 |
 | 15, 16 | PATCH | `/users/{username}/status` | token, self | 200 |
 | 17 | GET | `/training-types` | token | 200 |
@@ -419,6 +502,371 @@ There is no `type` field. Spring leaves it out while it is the default `about:bl
 
 Unknown URLs return the same JSON shape, not Tomcat's HTML error page. So do 401 and 403 from the security chain: they are written by `ProblemAuthenticationEntryPoint` and `ProblemAccessDeniedHandler` through one shared `ProblemDetailWriter`, because errors raised in the filter chain never reach `GlobalExceptionHandler`.
 
+## workload-service API
+
+Swagger UI is at `http://localhost:8081/swagger-ui.html`, the spec at `/v3/api-docs`. Everything else
+needs a service token; `/actuator/health` and the docs are open.
+
+| Method | Path | Scope | Success |
+|---|---|---|---|
+| POST | `/workloads` | `workload:write` | 200, empty body |
+| GET | `/workloads/{username}` | `workload:read` | 200, years and months in ascending order |
+| GET | `/workloads/{username}/{year}/{month}` | `workload:read` | 200, `trainingSummaryDuration` for that month |
+
+`POST /workloads` takes `trainerUsername`, `trainerFirstName`, `trainerLastName`, `isActive`,
+`trainingDate` (yyyy-MM-dd), `trainingDuration` and `actionType` (`ADD` or `DELETE`). Durations are
+in minutes, everywhere, and must be positive. The names and the status in the body replace the stored ones.
+
+- `ADD` adds the duration to the month of the training date.
+- `DELETE` subtracts it and clamps at zero: deleting more than the month holds leaves 0, logs a WARN
+  and still answers 200. A month that reaches 0 is dropped from the summary.
+- `DELETE` for a trainer that has no workload is accepted and changes nothing (WARN, 200). It must not
+  create a record, and a lost ADD must not make later deletes fail.
+- `GET` for a trainer that was never recorded is 404. For a known trainer a month with nothing in it is 0.
+
+| Status | When |
+|---|---|
+| 400 | A field is missing, blank or not positive, an unknown `actionType` (the message lists the allowed ones), a month outside 1 to 12, a non numeric year or month |
+| 401 | Token missing, expired, tampered, or with the wrong issuer or audience |
+| 403 | Valid token without the scope the endpoint needs |
+| 404 | `GET` for a trainer with no workload |
+
+Tokens are HS256 with `iss` `gym-crm` and `aud` `workload-service`, signed with `WORKLOAD_JWT_SECRET`
+(at least 32 bytes). Errors are problem details, same as gym-crm. The docker profile has no fallback for
+the secret or for `EUREKA_URL`.
+
+## How gym-crm sends changes
+
+Changes leave from a `@TransactionalEventListener(AFTER_COMMIT)` (`WorkloadChangeListener`), on the
+request thread. A rolled back transaction therefore never reports anything, and nothing is sent while the
+database transaction is still open.
+
+- `POST /trainings` publishes one `ADD` for the new training.
+- Deleting a trainee publishes one `DELETE` per training, loaded before the delete removes them. This is
+  the only way trainings are deleted: there is no delete-training endpoint.
+- A trainee without trainings sends nothing.
+
+`WorkloadPublisher` sends each change as a JMS message to `trainer.workload`, with retry; the contract,
+the error handling and the scaling are under Messaging.
+
+**Reads.** The client is a `RestClient` behind an `@HttpExchange` interface (`WorkloadClient`), `@LoadBalanced`,
+and calls `http://workload-service`. The load balancer's `RestClient.Builder` is `@Bean(autowireCandidate = false)`,
+otherwise Eureka's own HTTP transport would pick up the load balanced builder.
+
+**Service token.** gym-crm mints its own token with `WORKLOAD_JWT_SECRET`, separate from the user secret:
+`iss` and `sub` `gym-crm`, `aud` `workload-service`, five minutes lifetime, reused until 30 seconds before it
+expires. The REST read carries one with scope `workload:read`, every message one with `workload:write`.
+
+**Transaction id.** For the read, an interceptor copies the id from the MDC into `X-Transaction-Id`; for a
+write it goes into the `transactionId` message property. Either way workload-service logs the id of the
+gym-crm request that caused it. Because both happen on the request thread the MDC is still there.
+
+`GET /trainers/{username}/workload/{year}/{month}` is self only like the other trainer endpoints. It checks
+that the trainer exists in gym-crm (404), then asks workload-service; a 404 from there means no workload
+yet and is answered as 0 minutes.
+
+## Resilience
+
+- **Timeouts** come from the HTTP client: connect 2s, read 3s (`gymcrm.workload.connect-timeout`,
+  `read-timeout`).
+- **Circuit breaker** `workload`: count based window of 10 calls, opens at 50% failures once 5 calls were
+  recorded, stays open 10s and then moves to half open by itself, where 2 calls decide. Failures are 5xx,
+  I/O errors (including timeouts) and `IllegalStateException`; 4xx responses do not count.
+- **Writes** no longer go through the breaker; they are queued, see Messaging, Error handling.
+- **Reads**: there is nothing to fall back to, so the same failure ends in 503 with a problem detail.
+- **Thread pool and time limiter are disabled** (`disable-thread-pool`, `disable-time-limiter`). The default
+  would run the call on another thread, where the MDC, and with it the transaction id, is gone. The HTTP
+  timeouts do the job of the time limiter.
+- **Health.** `/actuator/health` has a `circuitBreakers` component with the state, failure rate and call
+  counts in its details. It always reports UP: a down workload-service must not make gym-crm look
+  unhealthy, because compose would restart a container that is working and a load balancer would drop it,
+  while the application serves everything except one endpoint. The state is for reading, not for deciding.
+
+## Messaging
+
+Since the Messaging module, workload changes travel through ActiveMQ Artemis. The trainer's monthly
+read stays a synchronous REST call.
+
+```
+gym-crm --after commit, JMS--> [ trainer.workload ] --competing consumers--> workload-service
+   |                              (anycast queue)                                 |
+   |                                    | invalid, or 3 failed deliveries        |
+   |                                    v                                         |
+   |                           [ DLQ.trainer.workload ]                           |
+   +----------------- GET /workloads/{username}/{year}/{month} (REST) ------------+
+```
+
+**Why async for writes.** A write is a notification that something already happened in gym-crm. The user
+does not wait for its result, and it must not be lost while workload-service is down, slow or redeploying.
+The queue holds it until a consumer takes it, the broker retries a failed delivery, and the two services
+no longer need to be up at the same time. The REST write path lost every change made during an outage.
+
+**Why REST for reads.** A read needs the answer now and has nothing to queue. A request and a reply over
+messaging would only add a correlation id and a timeout to what HTTP already does. The read keeps the
+circuit breaker and answers 503 when workload-service cannot respond. `POST /workloads` stays on
+workload-service for direct use.
+
+### Event contract
+
+One JSON text message per change. The body:
+
+| Field | Type | Notes |
+|---|---|---|
+| `eventId` | UUID | new for every event; the idempotency key |
+| `occurredAt` | ISO-8601 instant | when gym-crm published the change |
+| `trainerUsername` | string | |
+| `trainerFirstName`, `trainerLastName` | string | replace the stored names |
+| `isActive` | boolean | |
+| `trainingDate` | `yyyy-MM-dd` | the month it counts towards |
+| `trainingDuration` | positive integer | minutes |
+| `actionType` | `ADD` or `DELETE` | |
+
+The JMS properties:
+
+| Property | Value | Why |
+|---|---|---|
+| `eventType` | `workloadChange` | a logical type id; the services share no Java classes |
+| `eventVersion` | `1` | lets a later version be rejected cleanly instead of misread |
+| `transactionId` | id of the gym-crm request | the same id in the logs of both services |
+| `authorization` | service JWT, scope `workload:write` | the listener checks it just as the REST API does |
+| `JMSXGroupID` | trainer username | per-trainer ordering, see Scaling |
+
+Sample files live in `src/test/resources/contract/` and `workload-service/src/test/resources/contract/`.
+Tests on each side check them, so a change to one side that the other cannot read fails a build.
+
+### Error handling
+
+| Outcome | Cause | What happens |
+|---|---|---|
+| `APPLIED` | valid event with a valid token | the change is stored, the eventId is recorded and the session commits (ack) |
+| `DUPLICATE` | an eventId already processed | logged at INFO and acknowledged; the stored totals do not change |
+| `DEAD_LETTERED UNAUTHENTICATED` | `authorization` missing, expired, tampered, wrong issuer or audience | forwarded to `DLQ.trainer.workload` on delivery 1, never redelivered |
+| `DEAD_LETTERED FORBIDDEN` | valid token without `workload:write` | same |
+| `DEAD_LETTERED MALFORMED` | not text, wrong `eventType` or `eventVersion`, empty body, unreadable JSON | same |
+| `DEAD_LETTERED INVALID` | readable JSON failing validation (missing field, non-positive duration) | same; `dlqDetail` lists the violations |
+| transient failure | any unexpected exception in the listener | logged as `FAILED` at ERROR, the session rolls back, and the broker redelivers after 500 ms, then 1000 ms |
+| permanent failure | the same exception on all 3 deliveries | the broker moves the message to `DLQ.trainer.workload` (address-settings, not code) |
+| broker down, port refused | broker host up, nothing listening on 61616 | the publisher retries 3 times (200, 400, 800 ms), then logs ERROR; the request still returns 200, measured at **1.4 s** with 4 attempts |
+| broker down, host unreachable | no route, or the broker container stopped | each attempt waits out the 1 s connect timeout, and the 3 s retry budget ends it; measured at **3.6 s** with 3 attempts (unroutable IP) and **3.1 s** with 2 attempts (compose `artemis` stopped) |
+
+Each forwarded message carries `dlqReason`, `dlqDetail`, `originalQueue`, `transactionId` and, when the body
+could be read, `eventId`. A message the broker dead-letters keeps its own properties, plus `_AMQ_ORIG_QUEUE`.
+The publisher retries only on `JmsException`. A conversion failure is a bug, and sending it again cannot help.
+The timeouts live in the broker URL (`connect-timeout-millis=1000&callTimeout=1000`).
+`useTopologyForLoadBalancing=false` stops the client trying the topology connector and then the static one
+with a 2 s pause between them; with that pause, a request took 6.5 s to fail.
+
+### Acknowledgement and transactions
+
+The listener container uses a transacted session (`sessionTransacted=true`). The message is acknowledged
+when that session commits, after the change has been applied, so a crash in between means redelivery, not
+loss. An invalid message is forwarded to the DLQ on the **same session**: the forward and the removal from
+`trainer.workload` commit together, so the message is never in both queues and never in neither. An
+unexpected exception propagates, the session rolls back, and the redelivery settings decide what happens
+next. They live in `docker/artemis/broker.properties` and, for tests, in `EmbeddedBrokerTestConfig`, with
+the same values: 3 attempts, 500 ms delay, multiplier 2, at most 5000 ms.
+
+On the producer side the send is made after the database commit. A rollback therefore never publishes,
+and a broker outage never undoes the user's change.
+
+### Scaling
+
+- **Competing consumers.** `trainer.workload` is anycast, so each message goes to exactly one consumer.
+  More consumer threads, or more workload-service instances, share the load.
+- **Concurrency per profile** through `workload.messaging.concurrency`: `2-4` by default (compose reads
+  `WORKLOAD_MESSAGING_CONCURRENCY`), `1-1` in tests.
+- **Message groups.** `JMSXGroupID` is the trainer username, so the broker sends all events of one
+  trainer to one consumer at a time, in order, while other trainers are processed in parallel. A single
+  consumer would also give ordering, but would not scale.
+- **`consumerWindowSize=0`** on workload-service's URL. Consumers do not prefetch, so an idle consumer gets
+  the next message instead of it waiting in a busy consumer's buffer.
+- **Limitation.** The store is still in memory. Two workload-service instances would each hold only the
+  trainers whose groups they own, and a read could reach the instance that does not hold that trainer.
+  More threads in one instance are fine; more instances need the shared store of the MongoDB module.
+
+### Profiles
+
+| Service | Profile | Broker | URL | Credentials | Variable missing |
+|---|---|---|---|---|---|
+| gym-crm | local, dev, standalone | native | `ARTEMIS_URL`, default `tcp://localhost:61616` with the timeouts | `ARTEMIS_USER`, `ARTEMIS_PASSWORD`, or obviously fake defaults | uses the default |
+| gym-crm | stg, prod | native | `ARTEMIS_URL` | `ARTEMIS_USER`, `ARTEMIS_PASSWORD` | fails at startup |
+| gym-crm | tests | embedded, in-VM | none | none | n/a |
+| workload-service | local | native | `ARTEMIS_URL`, same default | same, with fake defaults | uses the default |
+| workload-service | docker | native | `ARTEMIS_URL` | `ARTEMIS_USER`, `ARTEMIS_PASSWORD` | fails at startup |
+| workload-service | test | embedded, in-VM, with the production address-settings | none | none | n/a |
+
+`RequiredBrokerVariablesProcessor` (one copy per service) stops the deployed profiles before any bean is
+created. In compose, gym-crm runs `dev` and workload-service runs `docker`. Both get `ARTEMIS_URL` from
+`compose.yml` and the credentials from `.env.broker.docker`. The test suites need no Docker.
+
+### Docker
+
+The `artemis` service runs `apache/activemq-artemis:2.44.0` (the client library is 2.43.0):
+
+```bash
+cp .env.broker.docker.example .env.broker.docker
+```
+
+Set `ARTEMIS_USER` and `ARTEMIS_PASSWORD` there (for example `openssl rand -base64 24`). The file is git
+ignored. Anonymous login is off. Port 61616 stays on the compose network. Only the web console is
+published, at http://127.0.0.1:8161/console, bound to localhost. Both services wait until
+`artemis check node --up` passes.
+
+- `docker/artemis/broker.properties` declares both anycast queues and the address-settings. It is passed
+  with `artemis run --properties`, because the image copies `etc-override` only when it first creates the
+  instance, and after that the instance lives on in the volume.
+- `docker/artemis/log4j2.properties` is the image's logging config plus one filter, picked through
+  `JAVA_ARGS_APPEND=-Dlog4j2.configurationFile=...`. When the broker dead-letters a message it logs
+  AMQ222149 with **every** message property, including `authorization`, so a live service token would
+  land in the log. A `StringMatchFilter` on `AMQ222149`, scoped to the
+  `org.apache.activemq.artemis.core.server` logger, drops only that line; every other server warning
+  stays. Checked live: with the filter off, the line printed a marker token; with it on, nothing.
+- The named volume `gymcrm-artemis-data` holds the whole instance, so messages survive `docker compose down`
+  and restarts. Mounting it on `data/` alone fails, because Docker creates that directory owned by root.
+- **Changing the password.** The image writes the credentials into the instance the first time it
+  creates it. A new password in `.env.broker.docker` therefore needs
+  `docker compose down && docker volume rm gymcrm-artemis-data`, which also drops queued messages.
+
+Queue counts are also readable over Jolokia from the host, with basic auth (`GET` on
+`/console/jolokia/read/<queue mbean>/MessageCount`).
+
+### Live scenarios
+
+The helpers in `scripts/messaging/` run against the compose stack:
+
+- `demo.sh` keeps usernames, generated passwords and user tokens in a mode 600 file under
+  `~/.cache/gym-crm/` and never prints them.
+- `mint.sh` signs a five minute service token inside the gym-crm container, with that container's secret.
+- `produce.sh` sends a raw message with the artemis CLI inside the artemis container.
+
+The token goes from one container to the other through a pipe. The broker credentials never leave the
+artemis container.
+
+```bash
+scripts/messaging/demo.sh setup && scripts/messaging/demo.sh login
+```
+
+**a. Happy path.** 200, the month shows 60, and the queue shows 0 messages with ADDED equal to ACKED.
+
+```bash
+scripts/messaging/demo.sh add 2026-11-03 60 demo-a-001
+scripts/messaging/demo.sh read 2026 11
+scripts/messaging/demo.sh q
+docker logs gym-crm 2>&1 | grep demo-a-001; docker logs workload-service 2>&1 | grep demo-a-001
+```
+
+**b. Consumer down.** Both POSTs return 200 and the queue holds 2. Both are applied about 2 s after the
+start. The read answers 503 until Eureka has the instance again (about 6 s), then 75.
+
+```bash
+docker compose stop workload-service
+scripts/messaging/demo.sh add 2026-12-01 30 demo-b-001
+scripts/messaging/demo.sh add 2026-12-02 45 demo-b-002
+scripts/messaging/demo.sh q
+docker compose start workload-service
+scripts/messaging/demo.sh read 2026 12
+```
+
+**c. Broker down.** 200 in 3.1 s with 2 WARN and 1 ERROR (`attempts=2`), and that change is lost (no
+outbox). After the start gym-crm publishes again without a restart. The listener reconnects within
+about 5 s, its recovery interval, and was measured at 4.8 s.
+
+```bash
+docker compose stop artemis
+scripts/messaging/demo.sh add 2026-10-05 20 demo-c-001
+docker logs gym-crm 2>&1 | grep demo-c-001 | grep -E "WARN|ERROR"
+docker compose start artemis
+scripts/messaging/demo.sh add 2026-10-06 25 demo-c-002
+```
+
+**d. Persistence.** The queue shows 1 before and after the broker restart, and the change is applied once
+the consumer is back.
+
+```bash
+docker compose stop workload-service
+scripts/messaging/demo.sh add 2027-01-10 50 demo-d-001
+scripts/messaging/demo.sh q
+docker compose restart artemis
+scripts/messaging/demo.sh q
+docker compose start workload-service
+```
+
+**e. Invalid message.** Without a token the message is dead-lettered on delivery 1 as `UNAUTHENTICATED`,
+with `dlqDetail` `authorization header is missing`. With a valid token the same body is `MALFORMED`.
+`Rollback.java` shows the broker side: three rolled back deliveries, then the DLQ, with no AMQ222149
+line logged. Its header has the one-line build-and-run command.
+
+```bash
+scripts/messaging/produce.sh --no-token demo-e-001 1 '{not json'
+scripts/messaging/mint.sh | scripts/messaging/produce.sh demo-e-002 1 '{not json'
+scripts/messaging/demo.sh dlq
+```
+
+**f. Duplicate.** The same message is sent twice with a real service token. The first is `APPLIED`, the
+second `DUPLICATE`, and the month shows 40.
+
+```bash
+BODY=$(scripts/messaging/demo.sh event 2027-02-14 40)
+scripts/messaging/mint.sh | scripts/messaging/produce.sh demo-f-001 2 "$BODY"
+docker logs workload-service 2>&1 | grep demo-f-001
+scripts/messaging/demo.sh read 2027 2
+```
+
+**g. Scaling.** `3-3` shows 3 consumers on the queue. The default `2-4` shows 2, and health reports
+`maxConsumers` 4.
+
+```bash
+WORKLOAD_MESSAGING_CONCURRENCY=3-3 docker compose up -d workload-service
+scripts/messaging/demo.sh q
+docker compose up -d workload-service
+scripts/messaging/demo.sh health
+```
+
+**h. Health.** With the broker stopped, both services still answer 200 UP. gym-crm shows
+`reachable: false`. workload-service shows `connected: false, recovering: true`.
+
+```bash
+docker compose stop artemis
+scripts/messaging/demo.sh health
+docker compose start artemis
+```
+
+### One change through both services
+
+Real lines from `docker logs gym-crm` and `docker logs workload-service` after
+`scripts/messaging/demo.sh add 2027-03-02 35 readme-msg-001`. The service name is added in front, and the
+SQL and body DEBUG lines are left out:
+
+```
+gym-crm           INFO  [readme-msg-001] c.g.gymcrm.service.TrainingService - Added training 'Demo' for trainee Demo.Member2 with trainer Demo.Coach2
+gym-crm           INFO  [readme-msg-001] c.g.g.workload.WorkloadPublisher - Published workload event: transactionId=readme-msg-001 queue=trainer.workload eventId=c92b9869-b2dc-43fb-b612-5a1775c007e2 action=ADD trainer=Demo.Coach2 attempts=1 durationMs=15
+gym-crm           INFO  [readme-msg-001] c.g.gymcrm.web.RequestLoggingFilter - POST /trainings returned 200 in 28 ms
+workload-service  INFO  [readme-msg-001] c.g.workload.service.WorkloadService - Applied ADD of 35 min in 2027-03 for trainer Demo.Coach2, month total is now 35 min
+workload-service  INFO  [readme-msg-001] c.g.w.m.WorkloadEventListener - trainer.workload event c92b9869-b2dc-43fb-b612-5a1775c007e2 ADD for trainer Demo.Coach2: APPLIED in 92 ms, delivery 1
+```
+
+The id comes from the request's `X-Transaction-Id`, travels as the `transactionId` property, and is
+put on the MDC of the listener thread.
+
+## Discovery
+
+Settings that make registration and eviction fast, so a demo that stops and starts a service shows the
+effect within seconds. The defaults (30s heartbeat, 90s expiry, 30s registry cache) would take minutes.
+
+| Setting | Where | Value | Why |
+|---|---|---|---|
+| `lease-renewal-interval-in-seconds` | clients | 5 | heartbeat |
+| `lease-expiration-duration-in-seconds` | clients | 15 | a stopped service is evicted after three missed beats |
+| `registry-fetch-interval-seconds` | clients | 5 | a client sees changes quickly |
+| `instance-info-replication-interval-seconds` | clients | 5 | status changes reach Eureka quickly |
+| `eviction-interval-timer-in-ms` | server | 5000 | expired leases are removed every 5s |
+| `use-read-only-response-cache` | server | false | reads see a registration immediately |
+| `enable-self-preservation` | server | false | Eureka keeps evicting instead of freezing the registry |
+| `loadbalancer.cache.ttl` | gym-crm | 5s | the load balancer re-reads the instance list |
+
+Self preservation off and these short leases suit a three service demo on one machine. In production
+the defaults protect the registry from evicting everything during a network blip.
+
 ## Logging
 
 Each request gets a transaction ID. If the request carries an `X-Transaction-Id` header with up to 64 letters, digits and dashes, that one is reused, otherwise a UUID is generated. Anything else in the header is replaced, so a caller cannot inject fake log lines. The ID goes into the MDC, so every log line of the request shows it, and it comes back in the response header. It is removed when the request ends, because Tomcat reuses threads.
@@ -432,6 +880,27 @@ Any JSON field whose name ends in `password` or `token` is masked before it is l
 Security events are logged with the transaction ID, and with the username where it is known: a successful login at INFO, a failed login, a lock, an attempt while locked and a rejected or revoked token at WARN, a denied request at WARN with the method, the path and the caller, a logout at INFO. `AccessDenialLog` writes that denial line in one place, so the security chain and the MVC layer produce the same one, for example `Denied GET /trainees/Other.Owner for user Logged.Denial`. Passwords, hashes and tokens never appear.
 
 A failed request is logged once. Only the 500 handler adds a stack trace, because only a 500 is a bug.
+
+Both services log on two levels, and the lines of one request share the transaction id. The **transaction**
+level is the request line from `RequestLoggingFilter`: call, status, time. The **operation** level is
+what the business code did. These are real lines from the compose stack, from
+`docker logs gym-crm` and `docker logs workload-service` after a `POST /trainings` sent with
+`X-Transaction-Id: readme-demo-002`, from the Microservices module, when the change still went over
+`POST /workloads`; gym-crm forwarded the id, so both services show it. The same flow through the broker is
+under Messaging, One change through both services:
+
+```
+gym-crm           INFO  [readme-demo-002] c.g.gymcrm.service.TrainingService - Added training 'Morning flow' for trainee Tom.Brown2 with trainer Sarah.Miller2
+gym-crm           INFO  [readme-demo-002] c.g.gymcrm.web.RequestLoggingFilter - POST /trainings returned 200 in 18 ms
+workload-service  INFO  [readme-demo-002] c.g.workload.service.WorkloadService - Applied ADD of 60 min in 2026-08 for trainer Sarah.Miller2, month total is now 60 min
+workload-service  INFO  [readme-demo-002] c.g.w.web.RequestLoggingFilter - POST /workloads returned 200 in 5 ms, request {"trainerUsername":"Sarah.Miller2","trainerFirstName":"****","trainerLastName":"****","isActive":true,"trainingDate":"2026-08-01","trainingDuration":60,"actionType":"ADD"}
+```
+
+(The service name column and the timestamps are left out; the lines are otherwise as logged.)
+
+`TransactionLoggingIntegrationTest` asserts that both lines carry the same id. Names are masked in the
+body, as are passwords and tokens. A change that could not be published is one WARN per failed attempt and
+a final ERROR, with the id of the user's request: `Workload event not published: transactionId=... queue=trainer.workload eventId=... action=ADD trainer=... attempts=2 durationMs=3108 cause=...`.
 
 `logback-spring.xml` holds the console pattern, including the transaction ID. Levels are not in it, they live in the profile YAMLs under `logging.level`, so there is one place to look.
 
@@ -501,7 +970,21 @@ Passwords are 10 random characters from an alphabet that leaves out `I`, `O`, `l
 
 ## Testing
 
-516 tests, 100% line and branch coverage, with only `GymCrmApplication` excluded.
+From a fresh `clean verify` of each service. Each pom has a JaCoCo check that fails the build below 80% line coverage:
+
+| Service | Tests | Line coverage | Branch coverage | Excluded from coverage |
+|---|---|---|---|---|
+| gym-crm | 629 | 100% (1123/1123) | 100% (170/170) | `GymCrmApplication` |
+| workload-service | 269 | 100% (456/456) | 100% (106/106) | `WorkloadServiceApplication` |
+| discovery-server | 2 | nothing to measure | nothing to measure | `DiscoveryServerApplication`, its only class |
+
+Two tests worth knowing in the workload path:
+
+- `WorkloadClientTest.appliesTheReadTimeout` points the client at a server that answers after the read
+  timeout and asserts the call ends in the fallback after at least 3 and under 6 seconds, with the
+  `HttpTimeoutException` in the WARN. It is the one test that really waits.
+- `InMemoryTrainerWorkloadRepositoryTest.losesNoParallelUpdate` runs 2000 ADDs of 3 minutes for one trainer
+  on 16 threads and asserts the month holds exactly 6000, which the atomic `ConcurrentHashMap.compute` guarantees.
 
 - DAO tests use `@DataJpaTest` against H2 and roll back after each test.
 - Services and the facade are tested with Mockito, no Spring context.
@@ -536,7 +1019,36 @@ The suite passes in normal order and in reverse alphabetical order (`-Dsurefire.
 - `@PreAuthorize` self checks, and `POST /trainings` limited to its own trainee or trainer.
 - Problem detail JSON for 401 and 403 from the security chain, tokens masked in the logs, and a `locked` outcome on the login metric.
 
+## What the Microservices module added
+
+- workload-service: monthly training minutes per trainer, JWT protected with read and write scopes, Swagger UI.
+- discovery-server: a Eureka registry; gym-crm finds workload-service by name through it.
+- Workload changes sent after commit, with a service token and the transaction id, behind a circuit breaker.
+- `GET /trainers/{username}/workload/{year}/{month}`, with 503 when workload-service cannot answer.
+- A Dockerfile per service and a compose file with health checks and ordered startup.
+
+## What the Messaging module added
+
+- ActiveMQ Artemis: workload writes go through the anycast queue `trainer.workload`, reads stay REST.
+- A versioned event contract with a service token, the transaction id and per-trainer message groups.
+- A transacted consumer with DLQ forwarding for invalid messages, broker redelivery for failures, and an
+  idempotent consumer.
+- Producer retry after commit, with client timeouts in the broker URL.
+- Competing consumers with concurrency per profile; broker health in both services.
+- An `artemis` compose service with mounted config, a log filter for tokens, a volume and a healthcheck.
+  The test suites use an embedded broker.
+
 ## Known limitations
+
+workload-service keeps its data in memory. A restart empties it, and with two instances each would hold its own part.
+
+There is no outbox. A change is published after commit, and if the broker stays unreachable through the 3 s retry budget it is lost: the ERROR line is the only record, and nothing reconciles the two stores. A transactional outbox would close that gap.
+
+The idempotency registry (the last 10,000 eventIds) is in memory like the store. After a workload-service restart, a redelivered event that was already applied would be applied again. In practice the store has been emptied by the same restart.
+
+A message the broker dead-letters after 3 failed deliveries keeps all its properties, including the service token. The token lives five minutes, has only `workload:write`, and the console that shows it is bound to 127.0.0.1. The broker's AMQ222149 log line, which would print it, is filtered out. Messages the listener forwards to the DLQ carry the original properties as well.
+
+There is no endpoint to delete a single training, by design. Trainings disappear only with their trainee, which is why every delete sends one `DELETE` per training.
 
 The lockout counts and the revoked tokens live in memory. A restart clears both, and with two instances of the app each would keep its own. A shared store, for example Redis, would fix that.
 

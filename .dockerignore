@@ -23,3 +23,7 @@ Dockerfile
 mvnw
 mvnw.cmd
 .mvn/
+
+# Sibling services build their own images from their own folders.
+discovery-server/
+workload-service/

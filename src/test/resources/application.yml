@@ -18,6 +18,21 @@ spring:
   web:
     resources:
       add-mappings: false
+  cloud:
+    circuitbreaker:
+      resilience4j:
+        disable-thread-pool: true
+        disable-time-limiter: true
+    loadbalancer:
+      cache:
+        ttl: 5s
+  artemis:
+    mode: embedded
+    embedded:
+      queues: trainer.workload
+  jms:
+    template:
+      receive-timeout: 5s
 
 # Fixed so a token minted in one test is readable in the next, and long enough for HS256.
 # The cors origins are the ones the security integration test sends Origin headers from.
@@ -28,6 +43,15 @@ gymcrm:
   security:
     max-login-attempts: 3
     lock-duration: 5m
+  workload:
+    base-url: http://workload-service
+    jwt-secret: test-only-workload-secret-0123456789abcdef
+    connect-timeout: 2s
+    read-timeout: 3s
+    messaging:
+      queue: trainer.workload
+      # short enough to keep the retry tests fast, the backoff shape is the production one
+      initial-delay: 10ms
   cors:
     allowed-origins:
       - http://localhost:3000
@@ -43,6 +67,32 @@ management:
     health:
       show-components: always
       show-details: always
+  health:
+    jms:
+      enabled: false
   metrics:
     tags:
       application: gym-crm
+
+# no test needs a running Eureka server
+eureka:
+  client:
+    enabled: false
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      workload:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+          - java.lang.IllegalStateException
+        ignore-exceptions:
+          - org.springframework.web.client.HttpClientErrorException

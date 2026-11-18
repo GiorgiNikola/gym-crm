@@ -10,6 +10,9 @@ import com.giorgi.gymcrm.model.Trainer;
 import com.giorgi.gymcrm.model.Training;
 import com.giorgi.gymcrm.model.TrainingType;
 import com.giorgi.gymcrm.model.User;
+import com.giorgi.gymcrm.workload.ActionType;
+import com.giorgi.gymcrm.workload.WorkloadChange;
+import com.giorgi.gymcrm.workload.WorkloadChangedEvent;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,6 +24,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
@@ -49,6 +53,9 @@ class TrainingServiceTest {
 
     @Mock
     private GymMetrics gymMetrics;
+
+    @Mock
+    private ApplicationEventPublisher events;
 
     @InjectMocks
     private TrainingService trainingService;
@@ -97,6 +104,33 @@ class TrainingServiceTest {
         Assertions.assertEquals("Morning Yoga", saved.getName());
         Assertions.assertEquals(DATE, saved.getDate());
         Assertions.assertEquals(60L, saved.getDuration());
+    }
+
+    @Test
+    @DisplayName("addTraining publishes an ADD with the trainer and the training for after the commit")
+    void publishesTheAddedWorkload() {
+        when(traineeDao.findByUsername("John.Smith")).thenReturn(Optional.of(john()));
+        when(trainerDao.findByUsername("Sarah.Miller")).thenReturn(Optional.of(sarah(trainingType(2L))));
+
+        trainingService.addTraining("John.Smith", "Sarah.Miller", "Morning Yoga", DATE, 60L);
+
+        ArgumentCaptor<WorkloadChangedEvent> published = ArgumentCaptor.forClass(WorkloadChangedEvent.class);
+        verify(events).publishEvent(published.capture());
+        Assertions.assertEquals(new WorkloadChange("Sarah.Miller", "Sarah", "Miller", true, DATE, 60, ActionType.ADD),
+                published.getValue().change());
+        Assertions.assertNotNull(published.getValue().eventId());
+        Assertions.assertNotNull(published.getValue().occurredAt());
+    }
+
+    @Test
+    @DisplayName("a failed addTraining publishes nothing")
+    void publishesNothingWhenTheTrainingIsNotAdded() {
+        when(traineeDao.findByUsername("Nobody.Here")).thenReturn(Optional.empty());
+
+        Assertions.assertThrows(ProfileNotFoundException.class,
+                () -> trainingService.addTraining("Nobody.Here", "Sarah.Miller", "Morning Yoga", DATE, 60L));
+
+        verifyNoInteractions(events);
     }
 
     @Test

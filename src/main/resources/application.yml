@@ -1,4 +1,6 @@
 spring:
+  application:
+    name: gym-crm
   profiles:
     # running with no --spring.profiles.active lands on local
     default: local
@@ -16,6 +18,14 @@ spring:
     resources:
       # no static content; an unknown path stays a "No endpoint" 404 problem
       add-mappings: false
+  cloud:
+    circuitbreaker:
+      resilience4j:
+        disable-thread-pool: true
+        disable-time-limiter: true
+    loadbalancer:
+      cache:
+        ttl: 5s
 
 # The actuator stays public: it exposes no personal data, and a monitoring scrape has no
 # token to present.
@@ -23,9 +33,44 @@ management:
   endpoint:
     health:
       show-components: always
+  health:
+    # replaced by BrokerHealthIndicator, which reports UP with the broker state in its details
+    jms:
+      enabled: false
   metrics:
     tags:
       application: gym-crm
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+    healthcheck:
+      enabled: true
+    instance-info-replication-interval-seconds: 5
+    registry-fetch-interval-seconds: 5
+  instance:
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+    lease-renewal-interval-in-seconds: 5
+    lease-expiration-duration-in-seconds: 15
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      workload:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+          - java.lang.IllegalStateException
+        ignore-exceptions:
+          - org.springframework.web.client.HttpClientErrorException
 
 gymcrm:
   health:
@@ -37,3 +82,9 @@ gymcrm:
   security:
     max-login-attempts: 3
     lock-duration: 5m
+  workload:
+    base-url: http://workload-service
+    connect-timeout: 2s
+    read-timeout: 3s
+    messaging:
+      queue: trainer.workload
