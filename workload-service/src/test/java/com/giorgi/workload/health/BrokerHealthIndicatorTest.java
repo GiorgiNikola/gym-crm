@@ -5,42 +5,69 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.Status;
-import org.springframework.jms.UncategorizedJmsException;
-import org.springframework.jms.core.JmsTemplate;
-import org.springframework.jms.core.SessionCallback;
+import org.springframework.jms.config.JmsListenerEndpointRegistry;
+import org.springframework.jms.listener.DefaultMessageListenerContainer;
+import org.springframework.jms.listener.MessageListenerContainer;
 
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class BrokerHealthIndicatorTest {
 
-    private final JmsTemplate jmsTemplate = mock(JmsTemplate.class);
-    private final BrokerHealthIndicator indicator = new BrokerHealthIndicator(jmsTemplate);
+    private final JmsListenerEndpointRegistry registry = mock(JmsListenerEndpointRegistry.class);
+    private final BrokerHealthIndicator indicator = new BrokerHealthIndicator(registry);
 
-    @Test
-    @DisplayName("a broker that opens a session is reported reachable")
-    void reportsReachableBroker() {
-        Health health = indicator.health();
-
-        Assertions.assertEquals(Status.UP, health.getStatus());
-        Assertions.assertEquals(Map.of("reachable", true), health.getDetails());
+    private void register(String id, MessageListenerContainer container) {
+        LinkedHashSet<String> ids = new LinkedHashSet<>(registry.getListenerContainerIds());
+        ids.add(id);
+        when(registry.getListenerContainerIds()).thenReturn(ids);
+        when(registry.getListenerContainer(id)).thenReturn(container);
     }
 
     @Test
-    @DisplayName("an unreachable broker keeps the service up and says why in the details")
-    void staysUpWhenBrokerIsUnreachable() {
-        when(jmsTemplate.execute(any(SessionCallback.class), eq(true)))
-                .thenThrow(new UncategorizedJmsException("Cannot connect to server"));
+    @DisplayName("a consuming listener reports its connection and consumer counts")
+    void reportsConsumingListener() {
+        DefaultMessageListenerContainer listener = mock(DefaultMessageListenerContainer.class);
+        when(listener.isRunning()).thenReturn(true);
+        when(listener.isRegisteredWithDestination()).thenReturn(true);
+        when(listener.getActiveConsumerCount()).thenReturn(2);
+        when(listener.getScheduledConsumerCount()).thenReturn(2);
+        when(listener.getMaxConcurrentConsumers()).thenReturn(4);
+        register("workloadEvents", listener);
 
         Health health = indicator.health();
 
         Assertions.assertEquals(Status.UP, health.getStatus());
-        Assertions.assertEquals(Map.of(
-                "reachable", false,
-                "error", "UncategorizedJmsException: Cannot connect to server"), health.getDetails());
+        Assertions.assertEquals(Map.of("workloadEvents", Map.of("running", true, "connected", true,
+                "recovering", false, "activeConsumers", 2, "scheduledConsumers", 2, "maxConsumers", 4)),
+                health.getDetails());
+    }
+
+    @Test
+    @DisplayName("a listener that lost the broker keeps the service up and shows it is recovering")
+    void staysUpWhileRecovering() {
+        DefaultMessageListenerContainer listener = mock(DefaultMessageListenerContainer.class);
+        when(listener.isRunning()).thenReturn(true);
+        when(listener.isRecovering()).thenReturn(true);
+        register("workloadEvents", listener);
+
+        Map<?, ?> state = (Map<?, ?>) indicator.health().getDetails().get("workloadEvents");
+
+        Assertions.assertEquals(List.of(false, true), List.of(state.get("connected"), state.get("recovering")));
+        Assertions.assertEquals(Status.UP, indicator.health().getStatus());
+    }
+
+    @Test
+    @DisplayName("another container type only says whether it runs, and no listeners means plain UP")
+    void otherContainersAndNone() {
+        Assertions.assertEquals(Health.up().build(), indicator.health());
+
+        register("other", mock(MessageListenerContainer.class));
+
+        Assertions.assertEquals(Map.of("other", Map.of("running", false)), indicator.health().getDetails());
     }
 }

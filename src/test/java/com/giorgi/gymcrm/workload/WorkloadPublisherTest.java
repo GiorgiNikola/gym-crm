@@ -9,6 +9,11 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.jms.UncategorizedJmsException;
 import org.springframework.jms.core.JmsMessagingTemplate;
+import org.springframework.jms.core.JmsTemplate;
+import org.springframework.jms.core.MessageCreator;
+import org.springframework.jms.support.converter.SimpleMessageConverter;
+import org.springframework.messaging.MessagingException;
+import org.springframework.messaging.converter.MessageConversionException;
 import org.springframework.util.backoff.BackOffExecution;
 
 import java.time.Duration;
@@ -29,7 +34,7 @@ import static org.mockito.Mockito.when;
 class WorkloadPublisherTest {
 
     private static final WorkloadProperties.Messaging MESSAGING = new WorkloadProperties.Messaging("trainer.workload",
-            Duration.ofSeconds(1), Duration.ofSeconds(1), 3, Duration.ofMillis(1), 2, Duration.ofSeconds(3));
+            3, Duration.ofMillis(1), 2, Duration.ofSeconds(3));
     private static final WorkloadChangedEvent EVENT = WorkloadChangedEvent.of(new WorkloadChange("Sarah.Miller",
             "Sarah", "Miller", true, LocalDate.of(2026, 8, 1), 60, ActionType.ADD));
 
@@ -71,7 +76,8 @@ class WorkloadPublisherTest {
     @DisplayName("a JmsException is tried once and retried three times")
     void retriesThreeTimes() {
         when(tokens.writeToken()).thenReturn("write.token");
-        doThrow(new UncategorizedJmsException("down")).when(template).convertAndSend(anyString(), any(), anyMap());
+        doThrow(new MessagingException("down", new UncategorizedJmsException("down")))
+                .when(template).convertAndSend(anyString(), any(), anyMap());
 
         try (LogCapture logs = LogCapture.of(WorkloadPublisher.class)) {
             publisher.publish(EVENT);
@@ -84,10 +90,46 @@ class WorkloadPublisherTest {
     }
 
     @Test
+    @DisplayName("a JmsException that the real messaging template wraps is unwrapped, warned about and retried")
+    void unwrapsTheMessagingTemplateFailure() {
+        when(tokens.writeToken()).thenReturn("write.token");
+        JmsTemplate jmsTemplate = mock(JmsTemplate.class);
+        when(jmsTemplate.getMessageConverter()).thenReturn(new SimpleMessageConverter());
+        doThrow(new UncategorizedJmsException("connection refused"))
+                .when(jmsTemplate).send(anyString(), any(MessageCreator.class));
+        WorkloadPublisher real = new WorkloadPublisher(new JmsMessagingTemplate(jmsTemplate), tokens,
+                new WorkloadProperties("http://workload-service", null, Duration.ofSeconds(2), Duration.ofSeconds(3),
+                        MESSAGING));
+
+        try (LogCapture logs = LogCapture.of(WorkloadPublisher.class)) {
+            real.publish(EVENT);
+
+            Assertions.assertEquals(4, logs.messages(Level.WARN).size());
+            Assertions.assertTrue(logs.messages(Level.WARN).getFirst().endsWith("attempt=1 cause=connection refused"));
+            Assertions.assertTrue(logs.messages(Level.ERROR).getFirst().endsWith("cause=connection refused"));
+        }
+    }
+
+    @Test
+    @DisplayName("a messaging failure without a JMS cause is not retried")
+    void doesNotRetryConversionFailures() {
+        when(tokens.writeToken()).thenReturn("write.token");
+        doThrow(new MessageConversionException("not serializable"))
+                .when(template).convertAndSend(anyString(), any(), anyMap());
+
+        try (LogCapture logs = LogCapture.of(WorkloadPublisher.class)) {
+            publisher.publish(EVENT);
+
+            Assertions.assertTrue(logs.messages(Level.WARN).isEmpty());
+            Assertions.assertTrue(logs.messages(Level.ERROR).getFirst().contains("attempts=1"));
+        }
+    }
+
+    @Test
     @DisplayName("the default policy waits 200, 400 and 800 ms, retries only JmsException and stops after 3 s")
     void defaultPolicyShape() {
         WorkloadProperties.Messaging defaults = new WorkloadProperties.Messaging("trainer.workload",
-                Duration.ofSeconds(1), Duration.ofSeconds(1), 3, Duration.ofMillis(200), 2, Duration.ofSeconds(3));
+                3, Duration.ofMillis(200), 2, Duration.ofSeconds(3));
 
         RetryPolicy policy = WorkloadPublisher.retryPolicy(defaults);
 

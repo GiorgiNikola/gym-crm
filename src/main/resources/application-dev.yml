@@ -8,7 +8,7 @@ spring:
       maximum-pool-size: 5
   artemis:
     mode: native
-    broker-url: ${ARTEMIS_URL:tcp://localhost:61616}
+    broker-url: ${ARTEMIS_URL:tcp://localhost:61616?connect-timeout-millis=1000&callTimeout=1000&useTopologyForLoadBalancing=false}
     user: ${ARTEMIS_USER:local-development-only-artemis}
     password: ${ARTEMIS_PASSWORD:local-development-only-artemis-password}
   jpa:

@@ -27,6 +27,7 @@ public class EmbeddedBrokerTestConfig {
                     .setMaxDeliveryAttempts(MAX_DELIVERY_ATTEMPTS)
                     .setRedeliveryDelay(500)
                     .setRedeliveryMultiplier(2)
+                    .setMaxRedeliveryDelay(5000)
                     .setDeadLetterAddress(SimpleString.of(DEAD_LETTER_QUEUE)));
             configuration.addAddressSetting(DEAD_LETTER_QUEUE, anycast());
             configuration.addQueueConfiguration(QueueConfiguration.of(QUEUE).setRoutingType(RoutingType.ANYCAST));

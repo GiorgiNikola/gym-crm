@@ -30,6 +30,7 @@ import org.springframework.jms.core.JmsMessagingTemplate;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.jms.support.JmsHeaders;
 import org.springframework.messaging.Message;
+import org.springframework.messaging.MessagingException;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.jdbc.JdbcTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -164,8 +165,12 @@ class WorkloadPublishingIntegrationTest {
                 .andExpect(status().isOk());
     }
 
+    private static MessagingException brokerFailure(String cause) {
+        return new MessagingException(cause, new UncategorizedJmsException(cause));
+    }
+
     private void failEverySend() {
-        doThrow(new UncategorizedJmsException("broker unreachable"))
+        doThrow(brokerFailure("broker unreachable"))
                 .when(workloadMessagingTemplate).convertAndSend(anyString(), any(), anyMap());
     }
 
@@ -296,7 +301,7 @@ class WorkloadPublishingIntegrationTest {
     void retriesAFailedSend() throws Exception {
         RegistrationResponse trainee = registerTrainee();
         RegistrationResponse trainer = registerTrainer();
-        doThrow(new UncategorizedJmsException("broker hiccup")).doCallRealMethod()
+        doThrow(brokerFailure("broker hiccup")).doCallRealMethod()
                 .when(workloadMessagingTemplate).convertAndSend(anyString(), any(), anyMap());
 
         try (LogCapture logs = LogCapture.of(WorkloadPublisher.class)) {

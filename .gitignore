@@ -36,3 +36,4 @@ build/
 ### Local container credentials ###
 .env.docker
 .env.services.docker
+.env.broker.docker

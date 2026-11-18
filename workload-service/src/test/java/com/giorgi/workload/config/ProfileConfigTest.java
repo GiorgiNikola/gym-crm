@@ -92,7 +92,8 @@ class ProfileConfigTest {
     @DisplayName("the local profile talks to a native broker on localhost with marked development credentials")
     void localProfileUsesLocalBroker() throws IOException {
         Assertions.assertEquals("native", property("application-local.yml", "spring.artemis.mode"));
-        Assertions.assertEquals("${ARTEMIS_URL:tcp://localhost:61616}",
+        Assertions.assertEquals("${ARTEMIS_URL:tcp://localhost:61616?connect-timeout-millis=1000&callTimeout=1000"
+                        + "&useTopologyForLoadBalancing=false}",
                 property("application-local.yml", "spring.artemis.broker-url"));
         Assertions.assertTrue(property("application-local.yml", "spring.artemis.user")
                 .startsWith("${ARTEMIS_USER:local-development-only"));

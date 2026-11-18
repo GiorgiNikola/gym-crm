@@ -27,12 +27,6 @@ public record WorkloadProperties(
             @DefaultValue("trainer.workload")
             String queue,
 
-            @DefaultValue("1s")
-            Duration connectTimeout,
-
-            @DefaultValue("1s")
-            Duration callTimeout,
-
             @DefaultValue("3")
             int maxRetries,
 

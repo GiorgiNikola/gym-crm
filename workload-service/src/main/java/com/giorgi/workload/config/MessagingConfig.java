@@ -11,6 +11,7 @@ import org.springframework.boot.jms.autoconfigure.DefaultJmsListenerContainerFac
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
+import org.springframework.jms.config.JmsListenerEndpointRegistry;
 import org.springframework.jms.core.JmsMessagingTemplate;
 import org.springframework.jms.core.JmsTemplate;
 
@@ -44,8 +45,8 @@ public class MessagingConfig {
     }
 
     @Bean
-    public BrokerHealthIndicator brokerHealthIndicator(ConnectionFactory connectionFactory) {
-        return new BrokerHealthIndicator(new JmsTemplate(listenerConnectionFactory(connectionFactory)));
+    public BrokerHealthIndicator brokerHealthIndicator(JmsListenerEndpointRegistry listenerRegistry) {
+        return new BrokerHealthIndicator(listenerRegistry);
     }
 
     @Bean

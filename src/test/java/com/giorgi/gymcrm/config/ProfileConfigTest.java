@@ -1,5 +1,7 @@
 package com.giorgi.gymcrm.config;
 
+import org.apache.activemq.artemis.core.remoting.impl.netty.TransportConstants;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,8 @@ class ProfileConfigTest {
     private static final String URL = "spring.datasource.url";
     private static final String POOL = "spring.datasource.hikari.maximum-pool-size";
     private static final String DDL_AUTO = "spring.jpa.hibernate.ddl-auto";
+    private static final String LOCAL_BROKER_URL =
+            "tcp://localhost:61616?connect-timeout-millis=1000&callTimeout=1000&useTopologyForLoadBalancing=false";
 
     private PropertySource<?> profile(String name) throws IOException {
         List<PropertySource<?>> loaded = new YamlPropertySourceLoader()
@@ -245,7 +249,8 @@ class ProfileConfigTest {
     @DisplayName("a development profile talks to a native broker on this machine with marked credentials")
     void developmentProfilesUseALocalBroker(String profile) throws IOException {
         Assertions.assertEquals("native", property(profile, "spring.artemis.mode"));
-        Assertions.assertEquals("${ARTEMIS_URL:tcp://localhost:61616}", property(profile, "spring.artemis.broker-url"));
+        Assertions.assertEquals("${ARTEMIS_URL:" + LOCAL_BROKER_URL + "}",
+                property(profile, "spring.artemis.broker-url"));
         Assertions.assertEquals("${ARTEMIS_USER:local-development-only-artemis}",
                 property(profile, "spring.artemis.user"));
         Assertions.assertEquals("${ARTEMIS_PASSWORD:local-development-only-artemis-password}",
@@ -271,6 +276,17 @@ class ProfileConfigTest {
 
         for (String key : List.of("spring.artemis.broker-url", "spring.artemis.user", "spring.artemis.password")) {
             Assertions.assertEquals(String.valueOf(workloadLocal.getProperty(key)), property("local", key), key);
+        }
+    }
+
+    @Test
+    @DisplayName("the broker url bounds connect and blocking calls to one second and skips the topology retry")
+    void brokerUrlCarriesTheClientTimeouts() {
+        try (ActiveMQConnectionFactory artemis = new ActiveMQConnectionFactory(LOCAL_BROKER_URL)) {
+            Assertions.assertEquals(1000, artemis.getCallTimeout());
+            Assertions.assertFalse(artemis.isUseTopologyForLoadBalancing());
+            Assertions.assertEquals("1000", String.valueOf(artemis.getStaticConnectors()[0].getParams()
+                    .get(TransportConstants.NETTY_CONNECT_TIMEOUT)));
         }
     }
 }

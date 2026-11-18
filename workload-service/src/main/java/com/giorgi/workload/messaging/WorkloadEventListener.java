@@ -23,6 +23,8 @@ import java.util.stream.Collectors;
 @Component
 public class WorkloadEventListener {
 
+    public static final String CONTAINER_ID = "workloadEvents";
+
     private static final String UNKNOWN = "-";
 
     private final ServiceTokenVerifier tokenVerifier;
@@ -49,7 +51,7 @@ public class WorkloadEventListener {
         this.properties = properties;
     }
 
-    @JmsListener(destination = "${workload.messaging.queue}",
+    @JmsListener(id = CONTAINER_ID, destination = "${workload.messaging.queue}",
             containerFactory = MessagingConfig.LISTENER_CONTAINER_FACTORY)
     public void onMessage(Message<?> message) {
         String transactionId = TransactionIds.resolve(stringHeader(message, WorkloadEventHeaders.TRANSACTION_ID));

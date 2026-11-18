@@ -8,6 +8,7 @@ import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.retry.RetryTemplate;
 import org.springframework.jms.JmsException;
 import org.springframework.jms.core.JmsMessagingTemplate;
+import org.springframework.messaging.MessagingException;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -66,10 +67,14 @@ public class WorkloadPublisher {
     private void send(WorkloadMessage message, String transactionId, int attempt) {
         try {
             template.convertAndSend(queue, message, headers(message, transactionId));
-        } catch (JmsException failure) {
+        } catch (MessagingException failure) {
+            // JmsMessagingTemplate wraps every JmsException; only those are broker trouble worth retrying.
+            if (!(failure.getCause() instanceof JmsException jms)) {
+                throw failure;
+            }
             log.warn("Workload event send failed: transactionId={} eventId={} attempt={} cause={}",
-                    transactionId, message.eventId(), attempt, failure.getMessage());
-            throw failure;
+                    transactionId, message.eventId(), attempt, jms.getMessage());
+            throw jms;
         }
     }
 

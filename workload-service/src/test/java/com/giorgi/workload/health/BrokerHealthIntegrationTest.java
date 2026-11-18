@@ -1,5 +1,6 @@
 package com.giorgi.workload.health;
 
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,13 +22,15 @@ class BrokerHealthIntegrationTest {
     private MockMvc mockMvc;
 
     @Test
-    @DisplayName("health shows the embedded broker as reachable and has no built-in jms contributor")
-    void reportsBrokerInsteadOfJms() throws Exception {
-        mockMvc.perform(get("/actuator/health"))
+    @DisplayName("health shows the running listener with its consumers and has no built-in jms contributor")
+    void reportsBrokerInsteadOfJms() {
+        Awaitility.await().untilAsserted(() -> mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
                 .andExpect(jsonPath("$.components.broker.status").value("UP"))
-                .andExpect(jsonPath("$.components.broker.details.reachable").value(true))
-                .andExpect(jsonPath("$.components.jms").doesNotExist());
+                .andExpect(jsonPath("$.components.broker.details.workloadEvents.running").value(true))
+                .andExpect(jsonPath("$.components.broker.details.workloadEvents.connected").value(true))
+                .andExpect(jsonPath("$.components.broker.details.workloadEvents.maxConsumers").value(1))
+                .andExpect(jsonPath("$.components.jms").doesNotExist()));
     }
 }

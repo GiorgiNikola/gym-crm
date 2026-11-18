@@ -2,27 +2,40 @@ package com.giorgi.workload.health;
 
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
-import org.springframework.jms.JmsException;
-import org.springframework.jms.core.JmsTemplate;
+import org.springframework.jms.config.JmsListenerEndpointRegistry;
+import org.springframework.jms.listener.DefaultMessageListenerContainer;
+import org.springframework.jms.listener.MessageListenerContainer;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class BrokerHealthIndicator implements HealthIndicator {
 
-    private final JmsTemplate jmsTemplate;
+    private final JmsListenerEndpointRegistry listenerRegistry;
 
-    public BrokerHealthIndicator(JmsTemplate jmsTemplate) {
-        this.jmsTemplate = jmsTemplate;
+    public BrokerHealthIndicator(JmsListenerEndpointRegistry listenerRegistry) {
+        this.listenerRegistry = listenerRegistry;
     }
 
     @Override
     public Health health() {
-        try {
-            jmsTemplate.execute(session -> null, true);
-            return Health.up().withDetail("reachable", true).build();
-        } catch (JmsException exception) {
-            return Health.up()
-                    .withDetail("reachable", false)
-                    .withDetail("error", exception.getClass().getSimpleName() + ": " + exception.getMessage())
-                    .build();
+        Health.Builder health = Health.up();
+        for (String id : listenerRegistry.getListenerContainerIds()) {
+            health.withDetail(id, state(listenerRegistry.getListenerContainer(id)));
         }
+        return health.build();
+    }
+
+    private static Map<String, Object> state(MessageListenerContainer container) {
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("running", container.isRunning());
+        if (container instanceof DefaultMessageListenerContainer listener) {
+            state.put("connected", listener.isRegisteredWithDestination());
+            state.put("recovering", listener.isRecovering());
+            state.put("activeConsumers", listener.getActiveConsumerCount());
+            state.put("scheduledConsumers", listener.getScheduledConsumerCount());
+            state.put("maxConsumers", listener.getMaxConcurrentConsumers());
+        }
+        return state;
     }
 }
