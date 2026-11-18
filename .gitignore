@@ -37,3 +37,7 @@ build/
 .env.docker
 .env.services.docker
 .env.broker.docker
+
+### Messaging demo state (kept outside the repo by default) ###
+*.state
+*.state.tmp
