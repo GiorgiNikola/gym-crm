@@ -15,6 +15,9 @@ public final class TestEvent {
     private final Map<String, Object> headers = new HashMap<>();
     private UUID eventId = UUID.randomUUID();
     private final String username;
+    private String firstName = "Sarah";
+    private String lastName = "Miller";
+    private boolean active = true;
     private String trainingDate = "2026-08-01";
     private int minutes = 60;
     private String actionType = "ADD";
@@ -39,6 +42,17 @@ public final class TestEvent {
 
     public TestEvent eventId(UUID eventId) {
         this.eventId = eventId;
+        return this;
+    }
+
+    public TestEvent names(String firstName, String lastName) {
+        this.firstName = firstName;
+        this.lastName = lastName;
+        return this;
+    }
+
+    public TestEvent active(boolean active) {
+        this.active = active;
         return this;
     }
 
@@ -86,9 +100,9 @@ public final class TestEvent {
         }
         return """
                 {"eventId":"%s","occurredAt":"2026-11-17T10:15:30Z","trainerUsername":"%s",\
-                "trainerFirstName":"Sarah","trainerLastName":"Miller","isActive":true,"trainingDate":"%s",\
+                "trainerFirstName":"%s","trainerLastName":"%s","isActive":%b,"trainingDate":"%s",\
                 "trainingDuration":%d,"actionType":"%s"}""".formatted(
-                eventId, username, trainingDate, minutes, actionType);
+                eventId, username, firstName, lastName, active, trainingDate, minutes, actionType);
     }
 
     public <M extends Message> M withPropertiesOn(M message) throws JMSException {
