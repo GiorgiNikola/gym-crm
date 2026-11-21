@@ -1,13 +1,13 @@
 # Gym CRM
 
-Trainees and trainers register, log in, manage their profiles, pick trainers and log trainings, all over HTTP. Data is stored in PostgreSQL. Spring Boot application with four environment profiles plus a standalone one for Docker, Flyway migrations, actuator health and Prometheus metrics, Swagger UI, and Spring Security with JWT bearer tokens. Since the Microservices module it is one of three services. Since the Messaging module it sends trainer workload changes to the second service through an ActiveMQ Artemis queue and reads the totals back over REST, finding that service through Eureka.
+Trainees and trainers register, log in, manage their profiles, pick trainers and log trainings, all over HTTP. Data is stored in PostgreSQL. Spring Boot application with four environment profiles plus a standalone one for Docker, Flyway migrations, actuator health and Prometheus metrics, Swagger UI, and Spring Security with JWT bearer tokens. Since the Microservices module it is one of three services. Since the Messaging module it sends trainer workload changes to the second service through an ActiveMQ Artemis queue and reads the totals back over REST, finding that service through Eureka. Since the NoSQL module that service keeps the totals in MongoDB.
 
 ## Architecture
 
 | Service | Folder | Purpose | Port | Base package |
 |---|---|---|---|---|
 | gym-crm | `/` (root) | Trainees, trainers, trainings, authentication; owns the PostgreSQL data | 8080 | `com.giorgi.gymcrm` |
-| workload-service | `workload-service/` | Monthly training minutes per trainer, in memory | 8081 | `com.giorgi.workload` |
+| workload-service | `workload-service/` | Monthly training minutes per trainer, stored in MongoDB | 8081 | `com.giorgi.workload` |
 | discovery-server | `discovery-server/` | Eureka registry | 8761 | `com.giorgi.discovery` |
 
 ```
@@ -16,8 +16,10 @@ client --JWT--> gym-crm :8080 --resolves "workload-service"--> Eureka :8761
                     |   | reads: REST, service JWT (workload:read) | instance list
                     |   +-----------------------------------> workload-service :8081
                     |                                                  ^
-                    | writes: JMS, service JWT (workload:write)        | consumes
-                    +------------> Artemis :61616 [trainer.workload] --+
+                    | writes: JMS, service JWT (workload:write)        | consumes      MongoDB :27017
+                    +------------> Artemis :61616 [trainer.workload] --+               ^
+                                                         workload-service ------------+
+                                                         one document per trainer
 ```
 
 Workload writes go through the broker; see Messaging. gym-crm never has a workload-service address
@@ -33,7 +35,7 @@ another. A parent pom or shared module would couple the builds this module is tr
 
 ## Stack
 
-Java 21 and Spring Boot 4.0.8, Spring Cloud 2025.1.3 for Eureka, the load balancer and the circuit breaker, ActiveMQ Artemis (client 2.43.0, broker image 2.44.0) through `spring-boot-starter-artemis`. The versions Boot manages, from `./mvnw dependency:tree`:
+Java 21 and Spring Boot 4.0.8, Spring Cloud 2025.1.3 for Eureka, the load balancer and the circuit breaker, ActiveMQ Artemis (client 2.43.0, broker image 2.44.0) through `spring-boot-starter-artemis`, MongoDB 8.0 LTS (image `mongo:8.0.38`) through Spring Data MongoDB in workload-service. The versions Boot manages, from `./mvnw dependency:tree`:
 
 | Part | Version |
 |---|---|
@@ -49,6 +51,9 @@ Java 21 and Spring Boot 4.0.8, Spring Cloud 2025.1.3 for Eureka, the load balanc
 | HikariCP | 7.0.2 |
 | PostgreSQL driver | 42.7.13 |
 | H2 (tests only) | 2.4.240 |
+| Spring Data MongoDB | 5.0.7 |
+| MongoDB Java driver | 5.6.5 |
+| Testcontainers (workload-service tests) | 2.0.5 |
 
 Plus Hibernate Validator, Lombok, JUnit 5, Mockito and JaCoCo.
 
@@ -271,12 +276,13 @@ docker network rm gymcrm-net
 
 ### The full stack with compose
 
-`compose.yml` runs five services on the `gymcrm-net` network:
+`compose.yml` runs six services on the `gymcrm-net` network:
 
 | Service | Container | Port on the host | Health |
 |---|---|---|---|
 | `db` | `gymcrm-db` | none | `pg_isready` |
 | `artemis` | `artemis` | 8161 (console, 127.0.0.1 only) | `artemis check node --up` |
+| `mongo` | `gymcrm-mongo` | none | mongosh `ping` |
 | `discovery-server` | `discovery-server` | 8761 | http://localhost:8761/actuator/health |
 | `workload-service` | `workload-service` | 8081 | http://localhost:8081/actuator/health |
 | `app` | `gym-crm` | 8080 | http://localhost:8080/actuator/health |
@@ -291,8 +297,10 @@ cp .env.services.docker.example .env.services.docker
 It holds `WORKLOAD_JWT_SECRET`, the secret gym-crm signs its service token with and
 workload-service checks it with; generate one with `openssl rand -base64 48`. It is git ignored
 like `.env.docker`. A third one, `.env.broker.docker` from `.env.broker.docker.example`, holds the broker
-credentials (see Messaging, Docker). The app gets all three, workload-service the service and broker
-files, so it never sees the database credentials.
+credentials (see Messaging, Docker). Two more, `.env.mongo-root.docker` and `.env.mongo-app.docker`, hold
+the MongoDB root account and the app user (see NoSQL, Docker). The app gets the database, service and
+broker files. workload-service gets the service, broker and Mongo app files, so it never sees the
+PostgreSQL credentials or the Mongo root account.
 
 ```bash
 docker compose up -d --build
@@ -300,8 +308,8 @@ docker compose ps
 docker compose down
 ```
 
-`docker compose down` leaves the volume alone, so the data survives. Add `-v` when you want the
-database wiped too:
+`docker compose down` leaves the volumes alone, so the data survives. Add `-v` when you want the
+databases wiped too:
 
 ```bash
 docker compose down -v
@@ -309,7 +317,7 @@ docker compose down -v
 
 Nothing is assumed ready just because its container started. Every service has a healthcheck,
 probed every 2 seconds while it starts, and `depends_on` waits for `service_healthy`: the app
-waits for the database, Eureka and the broker, workload-service waits for Eureka and the broker. The
+waits for the database, Eureka and the broker, workload-service waits for Eureka, the broker and MongoDB. The
 app does not wait for workload-service. Changes queue up in `trainer.workload` while it is missing,
 and only the monthly read, which it finds through Eureka by the name `workload-service`, answers 503.
 
@@ -320,17 +328,11 @@ http://localhost:8761. The three Spring services restart `unless-stopped`; when 
 back, both clients re-register on their next 5 second heartbeat. Eureka serves reads without
 its 30 second read-only cache, so a registration shows up on the next client fetch.
 
-workload-service runs on its own as well. Its image defaults to the `docker` profile, which has
-no fallback for `WORKLOAD_JWT_SECRET` or `EUREKA_URL`, so both are required:
-
-```bash
-docker run --rm -d --name workload-service -p 8081:8081 \
-  -e WORKLOAD_JWT_SECRET="$(openssl rand -base64 48)" \
-  -e EUREKA_URL=http://localhost:8761/eureka workload-service:latest
-```
-
-Without a reachable Eureka it still starts and answers health; it keeps retrying in the
-background.
+workload-service no longer runs on its own. Its image defaults to the `docker` profile, which has no
+fallback for `WORKLOAD_JWT_SECRET`, `EUREKA_URL`, `ARTEMIS_URL`, `ARTEMIS_USER`, `ARTEMIS_PASSWORD` or
+`MONGO_URI`. It also creates its indexes at startup, so it needs a reachable MongoDB and does not start
+without one. Run it through compose, which provides the broker and MongoDB. Without a reachable Eureka it
+still starts and answers health, and keeps retrying in the background.
 
 ### Why gymcrm-db and not localhost
 
@@ -530,6 +532,7 @@ in minutes, everywhere, and must be positive. The names and the status in the bo
 | 401 | Token missing, expired, tampered, or with the wrong issuer or audience |
 | 403 | Valid token without the scope the endpoint needs |
 | 404 | `GET` for a trainer with no workload |
+| 409 | `POST` still hit a version conflict after 3 retries (see NoSQL, Update flow) |
 
 Tokens are HS256 with `iss` `gym-crm` and `aud` `workload-service`, signed with `WORKLOAD_JWT_SECRET`
 (at least 32 bytes). Errors are problem details, same as gym-crm. The docker profile has no fallback for
@@ -680,9 +683,9 @@ and a broker outage never undoes the user's change.
   consumer would also give ordering, but would not scale.
 - **`consumerWindowSize=0`** on workload-service's URL. Consumers do not prefetch, so an idle consumer gets
   the next message instead of it waiting in a busy consumer's buffer.
-- **Limitation.** The store is still in memory. Two workload-service instances would each hold only the
-  trainers whose groups they own, and a read could reach the instance that does not hold that trainer.
-  More threads in one instance are fine; more instances need the shared store of the MongoDB module.
+- **Instances.** Since the NoSQL module every instance reads and writes the same MongoDB, so a read
+  can reach any instance and more instances are fine. A message group that moves to another instance
+  is safe as well: the version check and the in-document event ids cover the handover (see NoSQL).
 
 ### Profiles
 
@@ -848,6 +851,303 @@ workload-service  INFO  [readme-msg-001] c.g.w.m.WorkloadEventListener - trainer
 The id comes from the request's `X-Transaction-Id`, travels as the `transactionId` property, and is
 put on the MDC of the listener thread.
 
+## NoSQL
+
+Since the NoSQL module, workload-service keeps its totals in MongoDB instead of in memory. A restart
+loses nothing, and every instance reads and writes the same data. The `TrainerWorkloadRepository`
+interface stayed. `MongoTrainerWorkloadRepository` replaced the in-memory implementation, and the
+service, the listener and the controller did not change.
+
+```
+trainer.workload --> WorkloadEventListener --> WorkloadService --> TrainerWorkloadRepository
+POST /workloads  --> WorkloadController   --/                              |
+                                                              MongoTrainerWorkloadRepository
+                                                                           |
+                                                   MongoDB  workload.trainer_workloads
+                                                   (one document per trainer)
+```
+
+### One document per trainer
+
+Every read is about one trainer: `GET /workloads/{username}` returns all of that trainer's years, and the
+monthly read returns one month of it. Every write also touches one trainer, adding to or subtracting from
+one month. With the trainer, its years and its months in one document, a read is one lookup by the
+unique username, and a write is one atomic single-document save. No join or aggregation is needed, and
+no transaction across documents. The compose MongoDB is a standalone server, and multi-document
+transactions would need a replica set. The document stays small: twelve short month entries a year
+plus at most 100 event ids, far from the 16 MB limit.
+
+A real document from the compose stack, read with mongosh as the app user:
+
+```
+{
+  _id: ObjectId('6b0202b4b12d6211cafec5f1'),
+  username: 'Demo.Coach4',
+  firstName: 'Demo',
+  lastName: 'Coach',
+  status: true,
+  years: [
+    {
+      year: 2026,
+      months: [
+        { month: 11, trainingSummaryDuration: Long('60') },
+        { month: 12, trainingSummaryDuration: Long('80') }
+      ]
+    },
+    {
+      year: 2027,
+      months: [ { month: 1, trainingSummaryDuration: Long('40') } ]
+    }
+  ],
+  recentEventIds: [
+    '4fac4aa4-ba3b-4ba2-92c1-d44d2afb3de4',
+    '00708a79-435d-4aa8-ac15-730c9db978e7',
+    '47c52f13-b06c-407f-b3d8-0ce44d18a471',
+    'c51f4248-2430-4f1a-ae35-690a6975fc1e',
+    'd86c2c8a-4235-49df-85f6-808e78f07b85'
+  ],
+  version: Long('4')
+}
+```
+
+- `_id` is an ObjectId; the business key is `username`.
+- `status` is a Boolean. The former `TrainerStatus` enum is gone.
+- `trainingSummaryDuration` is in minutes, as everywhere else. A month that reaches 0 is removed, and
+  `DELETE` still subtracts and clamps at zero.
+- `recentEventIds` and `version` are explained below. There is no `_class` field.
+  `MongoTypeMapperConfig` keeps Boot's converter and only sets a type mapper without a type key, because
+  no document here is polymorphic. `storesNoTypeKey` checks the raw document.
+
+### Indexes
+
+| Name | Keys | Why |
+|---|---|---|
+| `username_unique` | `username` ascending, unique | every read and write looks a trainer up by username; uniqueness stops two documents for one trainer |
+| `firstName_lastName` | `firstName`, `lastName` ascending | lookup by name, as the module asks for |
+
+`spring.data.mongodb.auto-index-creation` stays `false`. `MongoIndexInitializer` creates both indexes by
+name at startup, in `afterSingletonsInstantiated`, before the JMS listener containers start, so no message
+is applied without the unique index. Creating an index that already exists with the same definition
+changes nothing, so a restart is safe (`createsIndexesIdempotently`). Indexes are named and created
+explicitly because annotation-driven creation is a side effect of the first use of the mapping context.
+It does not appear in a review, and it cannot be ordered before the listeners start. Spring Data
+has had it off by default since 3.0 for that reason. The startup log shows the result:
+
+```
+INFO  [] c.g.w.p.MongoIndexInitializer - MongoDB indexes ready on trainer_workloads: username_unique, firstName_lastName
+```
+
+### Update flow
+
+Every change, from the queue or from `POST /workloads`, runs the same way:
+
+1. Find the document by username.
+2. If the event id is already in `recentEventIds`, stop: duplicate, nothing saved.
+3. Apply the change in Java on the domain object (`ADD` adds, `DELETE` subtracts and clamps at zero).
+4. Append the event id, keeping the last 100.
+5. Save with the `version` read in step 1.
+
+`version` is a Spring Data `@Version` field. The save only matches a document that still has the version
+read in step 1, and it increments it. If another writer saved in between, the save matches nothing and
+Spring Data throws `OptimisticLockingFailureException`. A Spring Framework 7 `RetryTemplate`
+(`MongoConfig.versionConflictRetry`) then starts again from step 1 on the fresh document. It retries
+only that exception, at most 3 times, after 20, 40 and 80 ms. Each retry is a WARN
+(`Version conflict on the workload of trainer ..., retry 1 of 3`). If the last retry also conflicts, the
+exception reaches the caller. The listener logs `FAILED` and the broker redelivers. `POST /workloads`
+answers 409.
+
+**Concurrent creation.** Two writers that both find no document both insert one, and the second insert
+breaks the unique `username` index. That raises `DuplicateKeyException`, not a version conflict. The
+adapter rethrows it as `OptimisticLockingFailureException`, so the same retry re-reads the document the
+other writer created and applies the change on top of it. `retriesConcurrentCreateAgainstRealIndex`
+runs this against the real index: 30 minutes written by a competitor plus 60 of our own end up as 90,
+at version 1.
+
+Message groups already keep one trainer's events on one consumer. Version conflicts therefore come from
+`POST /workloads` racing an event, or from a group moving between consumers. The retry makes both safe.
+
+### Idempotency inside the document
+
+The idempotent consumer of the Messaging module kept its event ids in memory. They now live in the
+trainer document, in `recentEventIds`, and are checked and appended in the **same versioned save** as the
+change. The change and the record of having applied it are one single-document write, so they succeed or
+fail together.
+
+- No separate "processed events" collection. With one, a crash between the two writes would leave a
+  change applied but not recorded, which applies it again on redelivery, or recorded but not applied,
+  which loses it.
+- A version conflict re-reads the document, so the id is checked again on the fresh copy. If the other
+  writer was the same event, it is a duplicate.
+- A failed save stores neither the change nor the id, so the redelivered event is applied exactly once.
+- **The window is 100 ids per trainer** (`workload.persistence.recent-event-ids`, at least 1). Duplicates
+  arrive soon after the original: broker redeliveries come within seconds, and a producer retry within its
+  3 s budget. 100 ids are under 5 KB per trainer. A duplicate of an event older than the last 100 events
+  of the same trainer would be applied again.
+- REST writes carry no event id. `POST /workloads` changes the totals and keeps the stored ids as they are.
+
+### Validation layers
+
+| Layer | Where | Rejects | Result |
+|---|---|---|---|
+| Token | `WorkloadEventListener`, Spring Security on REST | missing, expired or tampered token, wrong scope | DLQ `UNAUTHENTICATED` or `FORBIDDEN`; 401 or 403 |
+| Event or request | bean validation on `WorkloadEvent` and `@Valid WorkloadRequest` | missing or blank fields, non-positive duration, unknown action | DLQ `INVALID` or `MALFORMED`; 400 |
+| Domain | `WorkloadChange.applyTo` | nothing; it decides the outcome | `DELETE` clamps at zero (WARN), `DELETE` for an unknown trainer creates nothing |
+| Document | `ValidatingEntityCallback` before every save, on `TrainerWorkloadDocument`, `YearDocument`, `MonthDocument` | blank username or names, null status, month outside 1 to 12, negative total, blank event id | `ConstraintViolationException`; nothing reaches MongoDB |
+
+The document layer is the last guard. It catches a mapping bug that the first two layers cannot see,
+before it is stored. `rejectsMonthOutOfRange` and `rejectsNegativeDurationAndMissingStatus` show that
+nothing is written.
+
+### Profiles
+
+| Profile | MongoDB | Connection | Variable missing |
+|---|---|---|---|
+| local | a server on `localhost:27017` | `MONGO_URI`, or an obviously fake development URI with `serverSelectionTimeoutMS=2000&connectTimeoutMS=2000` | uses the default |
+| docker | the compose `mongo` service | `MONGO_URI` only | fails at startup: `The docker profile has no default MongoDB connection: set the MONGO_URI environment variable` |
+| test | Testcontainers `mongo:8.0.38`, one container per JVM | `@ServiceConnection` | n/a |
+
+Boot 4 reads `spring.mongodb.uri`; the `spring.data.mongodb.*` connection properties are gone.
+`RequiredMongoVariablesProcessor` stops the docker profile before any bean is built. MongoDB is a core
+dependency: its health contributor stays on, and `/actuator/health` is DOWN while MongoDB is unreachable.
+The Testcontainers image is `MongoTestContainerConfig.MONGO_IMAGE`, the same tag as compose. The
+workload-service test suite therefore needs Docker running. gym-crm and discovery-server do not.
+
+### Docker
+
+The `mongo` service runs `mongo:8.0.38`, the current 8.0 LTS. It has no host port: 27017 is reachable
+from workload-service on `gymcrm-net` and nowhere else, and the demo runs mongosh inside the container.
+Data lives in the named volume `gymcrm-mongo-data` on `/data/db`. The healthcheck is a mongosh `ping`,
+and workload-service waits for `service_healthy`.
+
+Two env files, both git ignored, each with a committed `.example`:
+
+```bash
+cp .env.mongo-root.docker.example .env.mongo-root.docker
+cp .env.mongo-app.docker.example .env.mongo-app.docker
+```
+
+| File | Holds | Read by |
+|---|---|---|
+| `.env.mongo-root.docker` | `MONGO_INITDB_ROOT_USERNAME`, `MONGO_INITDB_ROOT_PASSWORD` | the `mongo` container only |
+| `.env.mongo-app.docker` | `MONGO_APP_DATABASE`, `MONGO_APP_USERNAME`, `MONGO_APP_PASSWORD` | `mongo` (for the init script) and workload-service |
+
+Generate the passwords with `openssl rand -hex 24`. workload-service never sees the root account.
+
+- **Init script.** `docker/mongo/create-app-user.js` is mounted into `/docker-entrypoint-initdb.d`. It
+  creates the app user with `readWrite` on the workload database only, reading every value from the
+  environment, and fails if one is missing. The image runs init scripts **only when `/data/db` is
+  empty**. Changing a password in the env files does nothing to an existing volume:
+  `docker compose rm -s -f mongo && docker volume rm gymcrm-mongo-data` starts over and deletes the data.
+- **The URI.** compose builds `MONGO_URI` with `$$` placeholders that Spring resolves from the app env
+  file:
+  `mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/${MONGO_APP_DATABASE}?authSource=${MONGO_APP_DATABASE}&serverSelectionTimeoutMS=2000&connectTimeoutMS=2000`.
+  The user authenticates against the workload database, where the init script created it. The two
+  timeouts make an outage fail in 2 s instead of the driver's default 30 s.
+- **Downgrade from 8.3.** The first version of this module ran `mongo:8.3.17`. On that volume, 8.0.38
+  crash-loops with `UPGRADE PROBLEM: Found an invalid featureCompatibilityVersion document`, because 8.3
+  wrote the data files. MongoDB does not downgrade in place, so the volume had to be recreated with the
+  command above.
+
+### Live scenarios
+
+Against the compose stack, with the `scripts/messaging/` helpers from Messaging, Live scenarios. Each
+mongosh line runs as the app user inside the container, with the credentials from that container's
+environment, so no password is typed or printed. To shorten the commands, define a shell function first:
+
+```bash
+app_mongosh() { docker exec gymcrm-mongo sh -c 'mongosh --quiet --norc "mongodb://localhost:27017/$MONGO_APP_DATABASE?authSource=$MONGO_APP_DATABASE" -u "$MONGO_APP_USERNAME" -p "$MONGO_APP_PASSWORD" --eval "$1"' sh "$1"; }
+```
+
+**a. Startup.** All six containers report healthy, and the workload-service log shows the indexes.
+
+```bash
+docker compose up -d --build --wait
+docker logs workload-service 2>&1 | grep "indexes ready"
+```
+
+**b. A training lands in MongoDB.** 200, the month shows 60, and the document has nested years and
+months, `status: true`, one id in `recentEventIds` and `version: 0`.
+
+```bash
+scripts/messaging/demo.sh setup && scripts/messaging/demo.sh login
+scripts/messaging/demo.sh add 2026-11-10 60 nosql-b-1
+scripts/messaging/demo.sh read 2026 11
+app_mongosh 'db.trainer_workloads.findOne({username: "Demo.Coach4"})'
+```
+
+Use the trainer username that `demo.sh setup` printed.
+
+**c. Indexes.** Prints `[ '_id_', 'username_unique (unique)', 'firstName_lastName' ]`.
+
+```bash
+app_mongosh 'db.trainer_workloads.getIndexes().map(i => i.name + (i.unique ? " (unique)" : ""))'
+```
+
+**d. Restart.** The read returns the same total after the restart. Right after it, the read can answer
+503 for about 2 s, until gym-crm's Eureka registry has the instance again.
+
+```bash
+docker compose restart workload-service
+scripts/messaging/demo.sh read 2026 11
+```
+
+**e. Duplicate.** The same event is sent twice. The log shows `APPLIED`, then `DUPLICATE`, and the count
+of documents holding the id is 1.
+
+```bash
+BODY=$(scripts/messaging/demo.sh event 2027-01-20 40)
+scripts/messaging/mint.sh | scripts/messaging/produce.sh nosql-e-dup 2 "$BODY"
+docker logs workload-service 2>&1 | grep nosql-e-dup | grep -E "APPLIED|DUPLICATE"
+EVENT_ID=$(printf '%s' "$BODY" | sed 's/.*"eventId":"\([^"]*\)".*/\1/')
+app_mongosh "db.trainer_workloads.countDocuments({recentEventIds: \"$EVENT_ID\"})"
+```
+
+**f. MongoDB down.** `POST /trainings` still answers 200. workload-service logs `FAILED
+DataAccessResourceFailureException` on each of the 3 deliveries, about 2.5 to 3 s apart (2 s server
+selection timeout plus the 500 and 1000 ms redelivery delays). The broker then moves the message to
+`DLQ.trainer.workload`, about 7.5 s after the send. Measured on the first run: deliveries at 12.5 s,
+15.1 s and 18.1 s, then the DLQ. `/actuator/health` of workload-service is 503 DOWN with `mongo` DOWN,
+which is expected for a core dependency. MongoDB was not back before the third delivery. Its restart
+plus the driver's reconnect takes longer than the 6 s that the three deliveries span, so a real outage
+ends in the DLQ (see Known limitations for the re-drive). After `start`, health is UP within about 3 s.
+While workload-service is DOWN, Eureka takes it out of the load balancer, so the monthly read answers 503
+(`No servers available for service: workload-service`) and recovers within seconds.
+
+```bash
+docker compose stop mongo
+scripts/messaging/demo.sh add 2026-11-14 30 nosql-f-down
+docker logs workload-service 2>&1 | grep nosql-f-down | grep FAILED
+curl -s localhost:8081/actuator/health
+scripts/messaging/demo.sh dlq
+docker compose start mongo
+```
+
+**g. Least privilege.** The app user is refused outside its database:
+`MongoServerError: not authorized on admin to execute command { listCollections: 1, ... }`.
+
+```bash
+app_mongosh 'db.getSiblingDB("admin").getCollectionNames()'
+```
+
+### One change into MongoDB
+
+Real lines from `docker logs gym-crm` and `docker logs workload-service` after
+`scripts/messaging/demo.sh add 2026-12-03 40 readme-nosql-001`. The service name is added in front, and
+the timestamps, SQL and body DEBUG lines are left out:
+
+```
+gym-crm           INFO  [readme-nosql-001] c.g.gymcrm.service.TrainingService - Added training 'Demo' for trainee Demo.Member4 with trainer Demo.Coach4
+gym-crm           INFO  [readme-nosql-001] c.g.g.workload.WorkloadPublisher - Published workload event: transactionId=readme-nosql-001 queue=trainer.workload eventId=00708a79-435d-4aa8-ac15-730c9db978e7 action=ADD trainer=Demo.Coach4 attempts=1 durationMs=23
+gym-crm           INFO  [readme-nosql-001] c.g.gymcrm.web.RequestLoggingFilter - POST /trainings returned 200 in 79 ms
+workload-service  INFO  [readme-nosql-001] c.g.w.p.MongoTrainerWorkloadRepository - Updated the workload of trainer Demo.Coach4 (active true) from version 0 to 1: year 2026 month 12 from 0 to 40 min
+workload-service  INFO  [readme-nosql-001] c.g.workload.service.WorkloadService - Applied ADD of 40 min in 2026-12 for trainer Demo.Coach4, month total is now 40 min
+workload-service  INFO  [readme-nosql-001] c.g.w.m.WorkloadEventListener - trainer.workload event 00708a79-435d-4aa8-ac15-730c9db978e7 ADD for trainer Demo.Coach4: APPLIED in 90 ms, delivery 1
+```
+
+The repository line is the storage operation: which trainer, the version before and after the save,
+and the month before and after. The first change of a trainer logs `Created the workload of trainer ...
+at version 0`. Names never appear in these lines; the `(active ...)` flag is the status.
+
 ## Discovery
 
 Settings that make registration and eviction fast, so a demo that stops and starts a service shows the
@@ -970,12 +1270,12 @@ Passwords are 10 random characters from an alphabet that leaves out `I`, `O`, `l
 
 ## Testing
 
-From a fresh `clean verify` of each service. Each pom has a JaCoCo check that fails the build below 80% line coverage:
+From a fresh `clean verify` of each service. Each pom has a JaCoCo check that fails the build below 80% line coverage. The workload-service suite runs MongoDB in Testcontainers, so it needs Docker running:
 
 | Service | Tests | Line coverage | Branch coverage | Excluded from coverage |
 |---|---|---|---|---|
 | gym-crm | 629 | 100% (1123/1123) | 100% (170/170) | `GymCrmApplication` |
-| workload-service | 269 | 100% (456/456) | 100% (106/106) | `WorkloadServiceApplication` |
+| workload-service | 313 | 100% (558/558) | 100% (118/118) | `WorkloadServiceApplication` |
 | discovery-server | 2 | nothing to measure | nothing to measure | `DiscoveryServerApplication`, its only class |
 
 Two tests worth knowing in the workload path:
@@ -983,8 +1283,10 @@ Two tests worth knowing in the workload path:
 - `WorkloadClientTest.appliesTheReadTimeout` points the client at a server that answers after the read
   timeout and asserts the call ends in the fallback after at least 3 and under 6 seconds, with the
   `HttpTimeoutException` in the WARN. It is the one test that really waits.
-- `InMemoryTrainerWorkloadRepositoryTest.losesNoParallelUpdate` runs 2000 ADDs of 3 minutes for one trainer
-  on 16 threads and asserts the month holds exactly 6000, which the atomic `ConcurrentHashMap.compute` guarantees.
+- `MongoPersistenceIntegrationTest.retriesConcurrentCreateAgainstRealIndex` lets a competitor create the
+  trainer in the middle of an update, against the real unique index on a Testcontainers MongoDB, and asserts
+  the change is retried on top of it (30 + 60 = 90 at version 1). `MongoTrainerWorkloadRepositoryTest`
+  covers the retry budget, the 100-id window and a failed save with Mockito.
 
 - DAO tests use `@DataJpaTest` against H2 and roll back after each test.
 - Services and the facade are tested with Mockito, no Spring context.
@@ -1038,13 +1340,53 @@ The suite passes in normal order and in reverse alphabetical order (`-Dsurefire.
 - An `artemis` compose service with mounted config, a log filter for tokens, a volume and a healthcheck.
   The test suites use an embedded broker.
 
+## What the NoSQL module added
+
+- MongoDB storage for workload-service: one document per trainer in `trainer_workloads`, behind the
+  unchanged `TrainerWorkloadRepository`.
+- Named indexes created at startup: unique `username`, and `firstName` + `lastName`.
+- Optimistic locking with `@Version` and a `RetryTemplate`; concurrent creation handled as a conflict.
+- Idempotency inside the document: the last 100 event ids, saved together with the change.
+- Bean validation of the document before every save, and a Boolean status instead of the enum.
+- A `mongo` compose service with a volume, a healthcheck, an init script for a least-privilege app user,
+  and separate root and app env files. Tests run on Testcontainers MongoDB.
+
 ## Known limitations
 
-workload-service keeps its data in memory. A restart empties it, and with two instances each would hold its own part.
+A long MongoDB outage ends in the DLQ. Each delivery waits out the 2 s server selection timeout, and
+the 3 deliveries span about 6 s, so an outage longer than that dead-letters every change made during it.
+gym-crm still returned 200, and the changes wait in `DLQ.trainer.workload` until someone re-drives them.
+With MongoDB back, re-drive them with the operations of the `DLQ.trainer.workload` queue MBean, which the
+Artemis console at http://127.0.0.1:8161/console exposes in its JMX view. `browse()` lists the messages
+with their `messageID`. `retryMessage(long)` moves one of them back to `trainer.workload`, and
+`retryMessages()` moves all of them. The same operations through Jolokia, run inside the artemis
+container so the broker credentials stay there. First the ids, with the transaction id of each message:
+
+```bash
+docker exec artemis sh -c 'curl -s -u "$ARTEMIS_USER:$ARTEMIS_PASSWORD" -H "Origin: http://localhost" -H "Content-Type: application/json" -d "{\"type\":\"exec\",\"mbean\":\"org.apache.activemq.artemis:broker=\\\"0.0.0.0\\\",component=addresses,address=\\\"DLQ.trainer.workload\\\",subcomponent=queues,routing-type=\\\"anycast\\\",queue=\\\"DLQ.trainer.workload\\\"\",\"operation\":\"browse()\"}" http://localhost:8161/console/jolokia/' | python3 -c 'import sys,json;[print(m["messageID"], (m.get("StringProperties") or {}).get("transactionId")) for m in json.load(sys.stdin)["value"]]'
+```
+
+Then one of them, by id:
+
+```bash
+ID=270936
+docker exec artemis sh -c 'curl -s -u "$ARTEMIS_USER:$ARTEMIS_PASSWORD" -H "Origin: http://localhost" -H "Content-Type: application/json" -d "{\"type\":\"exec\",\"mbean\":\"org.apache.activemq.artemis:broker=\\\"0.0.0.0\\\",component=addresses,address=\\\"DLQ.trainer.workload\\\",subcomponent=queues,routing-type=\\\"anycast\\\",queue=\\\"DLQ.trainer.workload\\\"\",\"operation\":\"retryMessage(long)\",\"arguments\":[$1]}" http://localhost:8161/console/jolokia/' sh "$ID"
+```
+
+Checked live: the re-driven event was `APPLIED` on delivery 1, and the month went from 65 to 80. Two
+catches. First, the message still carries its five-minute service token: a re-drive after that is
+dead-lettered again as `UNAUTHENTICATED` (`Jwt expired at ...`), and such a change has to be repeated
+through gym-crm. Second, `retryMessages()` also re-drives the invalid messages, which simply land in the
+DLQ again. Re-driving an event that was already applied is harmless, because its id is in the
+document (within the 100-id window).
+
+The Mongo passwords go into `MONGO_URI` unencoded, so they must be URL-safe. Use hex (`openssl rand -hex 24`).
+A password with `@`, `:`, `/` or `%` breaks the URI. Percent-encoding the value in the env file would also
+break the init script, which reads the same variable as the literal password.
 
 There is no outbox. A change is published after commit, and if the broker stays unreachable through the 3 s retry budget it is lost: the ERROR line is the only record, and nothing reconciles the two stores. A transactional outbox would close that gap.
 
-The idempotency registry (the last 10,000 eventIds) is in memory like the store. After a workload-service restart, a redelivered event that was already applied would be applied again. In practice the store has been emptied by the same restart.
+Idempotency covers the last 100 events per trainer. A duplicate older than that would be applied again. Redeliveries and producer retries arrive within seconds, far inside that window.
 
 A message the broker dead-letters after 3 failed deliveries keeps all its properties, including the service token. The token lives five minutes, has only `workload:write`, and the console that shows it is bound to 127.0.0.1. The broker's AMQ222149 log line, which would print it, is filtered out. Messages the listener forwards to the DLQ carry the original properties as well.
 
