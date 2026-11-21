@@ -10,7 +10,10 @@ import org.testcontainers.mongodb.MongoDBContainer;
 @Configuration(proxyBeanMethods = false)
 public class MongoTestContainerConfig {
 
-    private static final MongoDBContainer MONGO = new MongoDBContainer("mongo:8.0");
+    // Same 8.0 LTS tag as the mongo service in compose.yml.
+    private static final String MONGO_IMAGE = "mongo:8.0.38";
+
+    private static final MongoDBContainer MONGO = new MongoDBContainer(MONGO_IMAGE);
 
     // One container for every cached context; Testcontainers removes it when the JVM exits.
     @Bean(destroyMethod = "")

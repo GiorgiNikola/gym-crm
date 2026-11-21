@@ -37,6 +37,8 @@ build/
 .env.docker
 .env.services.docker
 .env.broker.docker
+.env.mongo-root.docker
+.env.mongo-app.docker
 
 ### Messaging demo state (kept outside the repo by default) ###
 *.state

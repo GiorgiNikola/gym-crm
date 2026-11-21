@@ -53,6 +53,26 @@ services:
       start_period: 30s
       start_interval: 2s
 
+  mongo:
+    # Same 8.0 LTS tag as MongoTestContainerConfig.MONGO_IMAGE.
+    image: mongo:8.0.38
+    container_name: gymcrm-mongo
+    # Root and app credentials. The entrypoint uses them only on an empty gymcrm-mongo-data volume.
+    env_file: [.env.mongo-root.docker, .env.mongo-app.docker]
+    networks: [gymcrm-net]
+    volumes:
+      - gymcrm-mongo-data:/data/db
+      - ./docker/mongo:/docker-entrypoint-initdb.d:ro
+    # No ports: 27017 is reachable from workload-service only; the demo uses mongosh inside the container.
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--norc", "--eval", "quit(db.adminCommand('ping').ok ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+      start_interval: 2s
+
   discovery-server:
     build: ./discovery-server
     image: discovery-server:latest
@@ -69,10 +89,12 @@ services:
     build: ./workload-service
     image: workload-service:latest
     container_name: workload-service
-    # The service secret and the broker credentials: workload-service has no database and gets no DB credentials.
-    env_file: [.env.services.docker, .env.broker.docker]
+    # The service secret, the broker credentials and the Mongo app user; no PostgreSQL credentials.
+    env_file: [.env.services.docker, .env.broker.docker, .env.mongo-app.docker]
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      # $$ keeps the placeholders for Spring, which fills them from the env file at startup.
+      MONGO_URI: mongodb://$${MONGO_APP_USERNAME}:$${MONGO_APP_PASSWORD}@mongo:27017/$${MONGO_APP_DATABASE}?authSource=$${MONGO_APP_DATABASE}&serverSelectionTimeoutMS=2000&connectTimeoutMS=2000
       EUREKA_URL: http://discovery-server:8761/eureka
       EUREKA_INSTANCE_HOSTNAME: workload-service
       # consumerWindowSize=0: no prefetch, so competing consumers take messages as they become free.
@@ -88,6 +110,8 @@ services:
       discovery-server:
         condition: service_healthy
       artemis:
+        condition: service_healthy
+      mongo:
         condition: service_healthy
     healthcheck:
       <<: *spring-healthcheck
@@ -132,3 +156,6 @@ volumes:
 
   gymcrm-artemis-data:
     name: gymcrm-artemis-data
+
+  gymcrm-mongo-data:
+    name: gymcrm-mongo-data

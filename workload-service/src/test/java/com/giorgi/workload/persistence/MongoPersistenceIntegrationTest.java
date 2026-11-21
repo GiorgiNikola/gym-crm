@@ -1,6 +1,7 @@
 package com.giorgi.workload.persistence;
 
 import com.giorgi.workload.config.MongoConfig;
+import com.giorgi.workload.config.MongoTypeMapperConfig;
 import com.giorgi.workload.model.ActionType;
 import com.giorgi.workload.model.TrainerWorkload;
 import com.giorgi.workload.model.WorkloadChange;
@@ -42,8 +43,8 @@ import static org.springframework.data.mongodb.core.query.Query.query;
 @ImportAutoConfiguration(ValidationAutoConfiguration.class)
 @EnableConfigurationProperties(PersistenceProperties.class)
 @TestPropertySource(properties = "workload.persistence.recent-event-ids=3")
-@Import({MongoTestContainerConfig.class, MongoConfig.class, MongoIndexInitializer.class,
-        TrainerWorkloadDocumentMapper.class, MongoTrainerWorkloadRepository.class})
+@Import({MongoTestContainerConfig.class, MongoConfig.class, MongoTypeMapperConfig.class,
+        MongoIndexInitializer.class, TrainerWorkloadDocumentMapper.class, MongoTrainerWorkloadRepository.class})
 class MongoPersistenceIntegrationTest {
 
     @Autowired
@@ -239,6 +240,23 @@ class MongoPersistenceIntegrationTest {
         Assertions.assertEquals(1L, stored.getVersion());
         Assertions.assertEquals(Boolean.FALSE, stored.getStatus());
         Assertions.assertEquals(45, workloads.findByUsername(username).orElseThrow().durationIn(2026, 8));
+    }
+
+    @Test
+    @DisplayName("a saved trainer and its nested years and months carry no _class type key")
+    void storesNoTypeKey() {
+        String username = newUsername();
+        workloads.update(username, UUID.randomUUID(), new WorkloadChange(username, "Sarah", "Miller", true,
+                LocalDate.of(2026, 8, 1), 30, ActionType.ADD)::applyTo);
+
+        Document raw = mongoTemplate.getCollection(TrainerWorkloadDocument.COLLECTION)
+                .find(new Document("username", username)).first();
+        Assertions.assertNotNull(raw);
+        Assertions.assertFalse(raw.containsKey("_class"), raw.toJson());
+        Document year = raw.getList("years", Document.class).getFirst();
+        Assertions.assertFalse(year.containsKey("_class"), year.toJson());
+        Assertions.assertFalse(year.getList("months", Document.class).getFirst().containsKey("_class"), year.toJson());
+        Assertions.assertEquals(30, workloads.findByUsername(username).orElseThrow().durationIn(2026, 8));
     }
 
     @Test
