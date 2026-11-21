@@ -56,7 +56,7 @@ class WorkloadEventOrderingIntegrationTest {
             applied.add(new Applied(change.trainerUsername(), change.trainingDuration(),
                     Thread.currentThread().getName()));
             return invocation.callRealMethod();
-        }).when(workloadService).apply(any());
+        }).when(workloadService).apply(any(), any());
 
         DefaultMessageListenerContainer container = (DefaultMessageListenerContainer)
                 listenerRegistry.getListenerContainers().iterator().next();

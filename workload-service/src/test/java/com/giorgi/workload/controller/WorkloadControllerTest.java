@@ -3,7 +3,6 @@ package com.giorgi.workload.controller;
 import com.giorgi.workload.exception.TrainerNotFoundException;
 import com.giorgi.workload.model.ActionType;
 import com.giorgi.workload.model.MonthSummary;
-import com.giorgi.workload.model.TrainerStatus;
 import com.giorgi.workload.model.TrainerWorkload;
 import com.giorgi.workload.model.WorkloadChange;
 import com.giorgi.workload.model.YearSummary;
@@ -87,7 +86,7 @@ class WorkloadControllerTest {
     }
 
     private TrainerWorkload sarah() {
-        return new TrainerWorkload(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE, List.of(
+        return new TrainerWorkload(USERNAME, "Sarah", "Miller", true, List.of(
                 new YearSummary(2026, List.of(new MonthSummary(8, 150), new MonthSummary(9, 45))),
                 new YearSummary(2027, List.of(new MonthSummary(1, 30)))));
     }
@@ -99,7 +98,7 @@ class WorkloadControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(""));
 
-        verify(workloadService).apply(new WorkloadChange(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE,
+        verify(workloadService).apply(new WorkloadChange(USERNAME, "Sarah", "Miller", true,
                 LocalDate.of(2026, 8, 1), 60, ActionType.ADD));
     }
 
@@ -111,7 +110,7 @@ class WorkloadControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(""));
 
-        verify(workloadService).apply(new WorkloadChange(USERNAME, "Sarah", "Miller", TrainerStatus.INACTIVE,
+        verify(workloadService).apply(new WorkloadChange(USERNAME, "Sarah", "Miller", false,
                 LocalDate.of(2026, 8, 1), 45, ActionType.DELETE));
     }
 
@@ -274,7 +273,7 @@ class WorkloadControllerTest {
                 .andExpect(jsonPath("$.trainerUsername").value(USERNAME))
                 .andExpect(jsonPath("$.trainerFirstName").value("Sarah"))
                 .andExpect(jsonPath("$.trainerLastName").value("Miller"))
-                .andExpect(jsonPath("$.trainerStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.trainerStatus").value(true))
                 .andExpect(jsonPath("$.years.length()").value(2))
                 .andExpect(jsonPath("$.years[0].year").value(2026))
                 .andExpect(jsonPath("$.years[0].months.length()").value(2))

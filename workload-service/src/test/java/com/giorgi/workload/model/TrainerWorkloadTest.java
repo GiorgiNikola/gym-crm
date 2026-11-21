@@ -18,15 +18,15 @@ class TrainerWorkloadTest {
     private static final LocalDate NEXT_JANUARY_10 = LocalDate.of(2027, 1, 10);
 
     private TrainerWorkload empty() {
-        return new TrainerWorkload(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE, List.of());
+        return new TrainerWorkload(USERNAME, "Sarah", "Miller", true, List.of());
     }
 
     private WorkloadChange add(LocalDate date, int minutes) {
-        return new WorkloadChange(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE, date, minutes, ActionType.ADD);
+        return new WorkloadChange(USERNAME, "Sarah", "Miller", true, date, minutes, ActionType.ADD);
     }
 
     private WorkloadChange delete(LocalDate date, int minutes) {
-        return new WorkloadChange(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE, date, minutes, ActionType.DELETE);
+        return new WorkloadChange(USERNAME, "Sarah", "Miller", true, date, minutes, ActionType.DELETE);
     }
 
     private YearSummary year(int year, MonthSummary... months) {
@@ -149,7 +149,7 @@ class TrainerWorkloadTest {
     @Test
     @DisplayName("an add replaces the names and the status with the latest ones")
     void addTakesLatestTrainerDetails() {
-        WorkloadChange renamed = new WorkloadChange(USERNAME, "Sara", "Miller-Jones", TrainerStatus.INACTIVE,
+        WorkloadChange renamed = new WorkloadChange(USERNAME, "Sara", "Miller-Jones", false,
                 AUGUST_20, 30, ActionType.ADD);
 
         TrainerWorkload workload = empty().add(add(AUGUST_1, 60)).add(renamed);
@@ -157,20 +157,20 @@ class TrainerWorkloadTest {
         Assertions.assertEquals(USERNAME, workload.trainerUsername());
         Assertions.assertEquals("Sara", workload.trainerFirstName());
         Assertions.assertEquals("Miller-Jones", workload.trainerLastName());
-        Assertions.assertEquals(TrainerStatus.INACTIVE, workload.trainerStatus());
+        Assertions.assertFalse(workload.trainerStatus());
     }
 
     @Test
     @DisplayName("a delete replaces the names and the status with the latest ones")
     void subtractTakesLatestTrainerDetails() {
-        WorkloadChange renamed = new WorkloadChange(USERNAME, "Sara", "Miller-Jones", TrainerStatus.INACTIVE,
+        WorkloadChange renamed = new WorkloadChange(USERNAME, "Sara", "Miller-Jones", false,
                 AUGUST_20, 30, ActionType.DELETE);
 
         TrainerWorkload workload = empty().add(add(AUGUST_1, 60)).subtract(renamed);
 
         Assertions.assertEquals("Sara", workload.trainerFirstName());
         Assertions.assertEquals("Miller-Jones", workload.trainerLastName());
-        Assertions.assertEquals(TrainerStatus.INACTIVE, workload.trainerStatus());
+        Assertions.assertFalse(workload.trainerStatus());
         Assertions.assertEquals(30, workload.durationIn(2026, 8));
     }
 
@@ -197,7 +197,7 @@ class TrainerWorkloadTest {
     void exposesUnmodifiableLists() {
         List<MonthSummary> months = new ArrayList<>(List.of(month(8, 60)));
         List<YearSummary> years = new ArrayList<>(List.of(new YearSummary(2026, months)));
-        TrainerWorkload workload = new TrainerWorkload(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE, years);
+        TrainerWorkload workload = new TrainerWorkload(USERNAME, "Sarah", "Miller", true, years);
 
         months.clear();
         years.clear();

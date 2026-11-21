@@ -13,6 +13,9 @@ spring:
   web:
     resources:
       add-mappings: false
+  data:
+    mongodb:
+      auto-index-creation: false
 
 eureka:
   client:
@@ -43,6 +46,8 @@ springdoc:
   default-produces-media-type: application/json
 
 workload:
+  persistence:
+    recent-event-ids: 100
   messaging:
     queue: trainer.workload
     dead-letter-queue: DLQ.trainer.workload

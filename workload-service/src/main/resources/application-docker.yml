@@ -3,6 +3,8 @@ workload:
     jwt-secret: ${WORKLOAD_JWT_SECRET}
 
 spring:
+  mongodb:
+    uri: ${MONGO_URI}
   artemis:
     mode: native
     broker-url: ${ARTEMIS_URL}

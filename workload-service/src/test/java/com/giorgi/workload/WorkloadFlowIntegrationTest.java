@@ -82,7 +82,7 @@ class WorkloadFlowIntegrationTest {
         read("/workloads/{username}", username)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.trainerLastName").value("Miller-Jones"))
-                .andExpect(jsonPath("$.trainerStatus").value("INACTIVE"))
+                .andExpect(jsonPath("$.trainerStatus").value(false))
                 .andExpect(jsonPath("$.years[0].year").value(2026))
                 .andExpect(jsonPath("$.years[0].months[0].month").value(8))
                 .andExpect(jsonPath("$.years[0].months[1].month").value(9))

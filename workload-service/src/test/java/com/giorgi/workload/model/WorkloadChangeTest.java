@@ -15,11 +15,11 @@ class WorkloadChangeTest {
     private static final LocalDate DATE = LocalDate.of(2026, 8, 20);
 
     private WorkloadChange change(ActionType actionType, int minutes) {
-        return new WorkloadChange(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE, DATE, minutes, actionType);
+        return new WorkloadChange(USERNAME, "Sarah", "Miller", true, DATE, minutes, actionType);
     }
 
     private Optional<TrainerWorkload> existing(long minutes) {
-        return Optional.of(new TrainerWorkload(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE,
+        return Optional.of(new TrainerWorkload(USERNAME, "Sarah", "Miller", true,
                 List.of(new YearSummary(2026, List.of(new MonthSummary(8, minutes))))));
     }
 
@@ -37,7 +37,7 @@ class WorkloadChangeTest {
         Assertions.assertEquals(USERNAME, created.trainerUsername());
         Assertions.assertEquals("Sarah", created.trainerFirstName());
         Assertions.assertEquals("Miller", created.trainerLastName());
-        Assertions.assertEquals(TrainerStatus.ACTIVE, created.trainerStatus());
+        Assertions.assertTrue(created.trainerStatus());
         Assertions.assertEquals(60, created.durationIn(2026, 8));
     }
 

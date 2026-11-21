@@ -3,6 +3,8 @@ workload:
     jwt-secret: ${WORKLOAD_JWT_SECRET:local-development-only-workload-secret-change-me-0123456789}
 
 spring:
+  mongodb:
+    uri: ${MONGO_URI:mongodb://local-development-only-mongo:local-development-only-mongo-password@localhost:27017/workload?authSource=admin&serverSelectionTimeoutMS=2000&connectTimeoutMS=2000}
   artemis:
     mode: native
     broker-url: ${ARTEMIS_URL:tcp://localhost:61616?connect-timeout-millis=1000&callTimeout=1000&useTopologyForLoadBalancing=false}

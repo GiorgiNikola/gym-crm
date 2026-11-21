@@ -2,6 +2,7 @@ package com.giorgi.workload.controller;
 
 import com.giorgi.workload.exception.TrainerNotFoundException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -32,6 +33,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(TrainerNotFoundException.class)
     public ProblemDetail handleTrainerNotFound(TrainerNotFoundException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ProblemDetail handleVersionConflict(OptimisticLockingFailureException exception) {
+        log.warn("Workload change gave up after repeated version conflicts: {}", exception.getMessage());
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                "The workload was changed concurrently, retry the request");
     }
 
     @ExceptionHandler(Exception.class)

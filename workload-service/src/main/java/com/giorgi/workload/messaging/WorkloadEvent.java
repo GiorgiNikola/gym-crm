@@ -1,7 +1,6 @@
 package com.giorgi.workload.messaging;
 
 import com.giorgi.workload.model.ActionType;
-import com.giorgi.workload.model.TrainerStatus;
 import com.giorgi.workload.model.WorkloadChange;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -24,6 +23,6 @@ public record WorkloadEvent(
 
     public WorkloadChange toChange() {
         return new WorkloadChange(trainerUsername, trainerFirstName, trainerLastName,
-                TrainerStatus.of(isActive), trainingDate, trainingDuration, actionType);
+                isActive, trainingDate, trainingDuration, actionType);
     }
 }

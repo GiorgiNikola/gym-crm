@@ -1,6 +1,5 @@
 package com.giorgi.workload.dto;
 
-import com.giorgi.workload.model.TrainerStatus;
 import com.giorgi.workload.model.TrainerWorkload;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -17,8 +16,8 @@ public record TrainerWorkloadResponse(
         @Schema(description = "The last name of the trainer", example = "Miller")
         String trainerLastName,
 
-        @Schema(description = "ACTIVE or INACTIVE, as the latest change reported it", example = "ACTIVE")
-        TrainerStatus trainerStatus,
+        @Schema(description = "Whether the trainer is active, as the latest change reported it", example = "true")
+        boolean trainerStatus,
 
         @Schema(description = "The years with training time, in ascending order")
         List<YearWorkloadResponse> years) {

@@ -64,4 +64,19 @@ class SecretStartupTest {
         Assertions.assertEquals("The docker profile has no default broker setting: set the ARTEMIS_URL "
                 + "environment variable", cause.getMessage());
     }
+
+    @Test
+    @DisplayName("the docker profile without MONGO_URI stops the startup")
+    void failsStartupOfDockerProfileWithoutMongoUri() {
+        Assumptions.assumeTrue(System.getenv("MONGO_URI") == null, "MONGO_URI is set on this machine");
+
+        Throwable cause = startupFailure("--spring.profiles.active=docker", "--server.port=0",
+                "--eureka.client.enabled=false", "--WORKLOAD_JWT_SECRET=a-real-secret-from-the-vault-0123456789",
+                "--ARTEMIS_URL=tcp://broker:61616", "--ARTEMIS_USER=from-the-vault",
+                "--ARTEMIS_PASSWORD=from-the-vault");
+
+        Assertions.assertInstanceOf(IllegalStateException.class, cause);
+        Assertions.assertEquals("The docker profile has no default MongoDB connection: set the MONGO_URI "
+                + "environment variable", cause.getMessage());
+    }
 }

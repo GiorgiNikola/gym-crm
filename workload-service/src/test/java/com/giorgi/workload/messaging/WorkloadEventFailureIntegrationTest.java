@@ -5,6 +5,10 @@ import com.giorgi.workload.LogCapture;
 import com.giorgi.workload.config.MessagingConfig;
 import com.giorgi.workload.logging.TransactionIds;
 import com.giorgi.workload.model.WorkloadChange;
+import com.giorgi.workload.persistence.MonthDocument;
+import com.giorgi.workload.persistence.TrainerWorkloadDocument;
+import com.giorgi.workload.persistence.TrainerWorkloadMongoRepository;
+import com.giorgi.workload.persistence.YearDocument;
 import com.giorgi.workload.service.WorkloadService;
 import org.apache.activemq.artemis.core.server.embedded.EmbeddedActiveMQ;
 import org.awaitility.Awaitility;
@@ -15,6 +19,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.jms.core.JmsMessagingTemplate;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.jms.listener.DefaultMessageListenerContainer;
@@ -47,8 +54,11 @@ class WorkloadEventFailureIntegrationTest {
     @MockitoSpyBean(name = "deadLetterTemplate")
     private JmsMessagingTemplate deadLetterTemplate;
 
+    @MockitoSpyBean
+    private MongoTemplate mongoTemplate;
+
     @Autowired
-    private ProcessedEventRegistry processedEvents;
+    private TrainerWorkloadMongoRepository documents;
 
     @Autowired
     private JmsTemplate jmsTemplate;
@@ -98,7 +108,7 @@ class WorkloadEventFailureIntegrationTest {
     void redeliversTransientFailure() {
         String username = TestEvent.newUsername();
         doThrow(new IllegalStateException("store busy")).doCallRealMethod()
-                .when(workloadService).apply(forTrainer(username));
+                .when(workloadService).apply(forTrainer(username), any());
 
         TestEvent event;
         try (LogCapture container = LogCapture.of(DefaultMessageListenerContainer.class);
@@ -111,8 +121,9 @@ class WorkloadEventFailureIntegrationTest {
             Assertions.assertEquals(List.of("Listener failure, already logged as FAILED"),
                     errorHandler.messages(Level.DEBUG));
         }
-        verify(workloadService, times(2)).apply(forTrainer(username));
-        Assertions.assertTrue(processedEvents.contains(event.eventId()));
+        verify(workloadService, times(2)).apply(forTrainer(username), any());
+        Assertions.assertEquals(List.of(event.eventId().toString()),
+                documents.findByUsername(username).orElseThrow().getRecentEventIds());
 
         List<String> lines = listenerLogs.messagesTagged(MDC_KEY, event.transactionId());
         Assertions.assertEquals(2, lines.size(), lines.toString());
@@ -124,10 +135,53 @@ class WorkloadEventFailureIntegrationTest {
     }
 
     @Test
+    @DisplayName("a version conflict that outlasted the retries rolls back and the redelivery applies it once")
+    void redeliversExhaustedVersionConflict() {
+        String username = TestEvent.newUsername();
+        doThrow(new OptimisticLockingFailureException("stale version")).doCallRealMethod()
+                .when(workloadService).apply(forTrainer(username), any());
+
+        TestEvent event = TestEvent.forTrainer(username).minutes(30).sendTo(messaging);
+
+        Awaitility.await().ignoreExceptions().untilAsserted(() ->
+                Assertions.assertEquals(30, workloadService.getMonthlyDuration(username, 2026, 8)));
+        verify(workloadService, times(2)).apply(forTrainer(username), any());
+        List<String> lines = listenerLogs.messagesTagged(MDC_KEY, event.transactionId());
+        Assertions.assertTrue(lines.get(0).contains(": FAILED OptimisticLockingFailureException: stale version in "),
+                lines.get(0));
+        Assertions.assertTrue(lines.get(1).contains(": APPLIED in "), lines.get(1));
+        Assertions.assertTrue(lines.get(1).endsWith("delivery 2"), lines.get(1));
+    }
+
+    @Test
+    @DisplayName("a save that fails rolls back, and the redelivery applies the event and records its id exactly once")
+    void redeliversFailedSaveOnce() {
+        String username = TestEvent.newUsername();
+        TestEvent created = TestEvent.forTrainer(username).minutes(60).sendTo(messaging);
+        Awaitility.await().until(() -> documents.findByUsername(username).isPresent());
+        doThrow(new DataAccessResourceFailureException("write concern not satisfied")).doCallRealMethod()
+                .when(mongoTemplate).save(argThat(document -> document instanceof TrainerWorkloadDocument workload
+                        && username.equals(workload.getUsername())), eq(TrainerWorkloadDocument.COLLECTION));
+
+        TestEvent event = TestEvent.forTrainer(username).minutes(30).sendTo(messaging);
+
+        Awaitility.await().until(() -> documents.findByUsername(username).orElseThrow().getVersion() == 1L);
+        TrainerWorkloadDocument stored = documents.findByUsername(username).orElseThrow();
+        Assertions.assertEquals(List.of(new YearDocument(2026, List.of(new MonthDocument(8, 90)))), stored.getYears());
+        Assertions.assertEquals(List.of(created.eventId().toString(), event.eventId().toString()),
+                stored.getRecentEventIds());
+        List<String> lines = listenerLogs.messagesTagged(MDC_KEY, event.transactionId());
+        Assertions.assertEquals(2, lines.size(), lines.toString());
+        Assertions.assertTrue(lines.get(0).contains(": FAILED DataAccessResourceFailureException: "), lines.get(0));
+        Assertions.assertTrue(lines.get(1).contains(": APPLIED in "), lines.get(1));
+        Assertions.assertTrue(lines.get(1).endsWith("delivery 2"), lines.get(1));
+    }
+
+    @Test
     @DisplayName("a failure on every delivery is dead-lettered by the broker after three attempts")
     void deadLettersPermanentFailure() {
         String username = TestEvent.newUsername();
-        doThrow(new IllegalStateException("store down")).when(workloadService).apply(forTrainer(username));
+        doThrow(new IllegalStateException("store down")).when(workloadService).apply(forTrainer(username), any());
 
         TestEvent event = TestEvent.forTrainer(username).sendTo(messaging);
 
@@ -136,8 +190,8 @@ class WorkloadEventFailureIntegrationTest {
         Assertions.assertEquals(event.text(), received.getPayload());
         Assertions.assertEquals(EmbeddedBrokerTestConfig.QUEUE, headers.get(ORIGINAL_ADDRESS));
         Assertions.assertFalse(headers.containsKey(WorkloadEventHeaders.DLQ_REASON));
-        verify(workloadService, times(EmbeddedBrokerTestConfig.MAX_DELIVERY_ATTEMPTS)).apply(forTrainer(username));
-        Assertions.assertFalse(processedEvents.contains(event.eventId()));
+        verify(workloadService, times(EmbeddedBrokerTestConfig.MAX_DELIVERY_ATTEMPTS)).apply(forTrainer(username), any());
+        Assertions.assertTrue(documents.findByUsername(username).isEmpty());
         assertFailedAttempts(event, EmbeddedBrokerTestConfig.MAX_DELIVERY_ATTEMPTS, "store down");
     }
 

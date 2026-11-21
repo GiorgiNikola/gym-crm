@@ -22,7 +22,7 @@ class BrokerHealthIntegrationTest {
     private MockMvc mockMvc;
 
     @Test
-    @DisplayName("health shows the running listener with its consumers and has no built-in jms contributor")
+    @DisplayName("health shows the running listener, the MongoDB contributor and no built-in jms contributor")
     void reportsBrokerInsteadOfJms() {
         Awaitility.await().untilAsserted(() -> mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
@@ -31,6 +31,7 @@ class BrokerHealthIntegrationTest {
                 .andExpect(jsonPath("$.components.broker.details.workloadEvents.running").value(true))
                 .andExpect(jsonPath("$.components.broker.details.workloadEvents.connected").value(true))
                 .andExpect(jsonPath("$.components.broker.details.workloadEvents.maxConsumers").value(1))
+                .andExpect(jsonPath("$.components.mongo.status").value("UP"))
                 .andExpect(jsonPath("$.components.jms").doesNotExist()));
     }
 }

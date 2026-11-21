@@ -5,7 +5,6 @@ import com.giorgi.workload.LogCapture;
 import com.giorgi.workload.exception.TrainerNotFoundException;
 import com.giorgi.workload.model.ActionType;
 import com.giorgi.workload.model.MonthSummary;
-import com.giorgi.workload.model.TrainerStatus;
 import com.giorgi.workload.model.TrainerWorkload;
 import com.giorgi.workload.model.WorkloadChange;
 import com.giorgi.workload.model.YearSummary;
@@ -26,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.UnaryOperator;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -61,14 +61,14 @@ class WorkloadServiceTest {
     }
 
     private WorkloadChange change(ActionType actionType, int minutes) {
-        return new WorkloadChange(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE, DATE, minutes, actionType);
+        return new WorkloadChange(USERNAME, "Sarah", "Miller", true, DATE, minutes, actionType);
     }
 
     private Optional<TrainerWorkload> workload(long minutes) {
         List<YearSummary> years = minutes == 0
                 ? List.of()
                 : List.of(new YearSummary(2026, List.of(new MonthSummary(8, minutes))));
-        return Optional.of(new TrainerWorkload(USERNAME, "Sarah", "Miller", TrainerStatus.ACTIVE, years));
+        return Optional.of(new TrainerWorkload(USERNAME, "Sarah", "Miller", true, years));
     }
 
     private void repositoryReports(Optional<TrainerWorkload> before, Optional<TrainerWorkload> after) {
@@ -177,6 +177,40 @@ class WorkloadServiceTest {
             Assertions.assertFalse(message.contains("Sarah"), message);
             Assertions.assertFalse(message.contains("Miller"), message);
         }
+    }
+
+    @Test
+    @DisplayName("a change from an event passes the event id and reports APPLIED")
+    void appliesEventThroughRepository() {
+        UUID eventId = UUID.randomUUID();
+        when(trainerWorkloadRepository.update(eq(USERNAME), eq(eventId), any()))
+                .thenReturn(new WorkloadUpdate(workload(90), workload(150)));
+
+        Assertions.assertEquals(ApplyOutcome.APPLIED, workloadService.apply(change(ActionType.ADD, 60), eventId));
+        Assertions.assertEquals(
+                List.of("Applied ADD of 60 min in 2026-08 for trainer trainer.one, month total is now 150 min"),
+                logs.messages(Level.INFO));
+    }
+
+    @Test
+    @DisplayName("an event the repository already holds reports DUPLICATE and logs the skip")
+    void reportsDuplicateEvent() {
+        UUID eventId = UUID.fromString("3f1c9a52-7d0e-4b8a-9c61-2e5f8d4a7b10");
+        when(trainerWorkloadRepository.update(eq(USERNAME), eq(eventId), any()))
+                .thenReturn(WorkloadUpdate.duplicateOf(workload(60)));
+
+        Assertions.assertEquals(ApplyOutcome.DUPLICATE, workloadService.apply(change(ActionType.ADD, 60), eventId));
+        Assertions.assertEquals(List.of("Skipped ADD of 60 min in 2026-08 for trainer trainer.one: event "
+                + "3f1c9a52-7d0e-4b8a-9c61-2e5f8d4a7b10 was already applied"), logs.messages(Level.INFO));
+        Assertions.assertTrue(logs.messages(Level.WARN).isEmpty());
+    }
+
+    @Test
+    @DisplayName("a REST change and an ignored unknown trainer both report APPLIED")
+    void reportsAppliedWithoutEvent() {
+        repositoryReports(Optional.empty(), Optional.empty());
+
+        Assertions.assertEquals(ApplyOutcome.APPLIED, workloadService.apply(change(ActionType.DELETE, 60)));
     }
 
     @Test

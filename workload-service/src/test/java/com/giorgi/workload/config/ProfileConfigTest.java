@@ -125,4 +125,32 @@ class ProfileConfigTest {
         Assertions.assertEquals("embedded", property("application-test.yml", "spring.artemis.mode"));
         Assertions.assertEquals("1-1", property("application-test.yml", "workload.messaging.concurrency"));
     }
+
+    @Test
+    @DisplayName("indexes are never created from annotations and a trainer keeps its last 100 event ids")
+    void configuresMongoDefaults() throws IOException {
+        Assertions.assertEquals("false", property("application.yml", "spring.data.mongodb.auto-index-creation"));
+        Assertions.assertEquals("100", property("application.yml", "workload.persistence.recent-event-ids"));
+    }
+
+    @Test
+    @DisplayName("the local profile connects to the workload database on localhost with a marked development user")
+    void localProfileUsesLocalMongo() throws IOException {
+        String uri = property("application-local.yml", "spring.mongodb.uri");
+
+        Assertions.assertTrue(uri.startsWith("${MONGO_URI:mongodb://local-development-only-mongo:"
+                + "local-development-only-mongo-password@localhost:27017/workload?"), uri);
+    }
+
+    @Test
+    @DisplayName("the docker profile takes the MongoDB connection from the environment with no fallback")
+    void dockerProfileRequiresMongoUri() throws IOException {
+        Assertions.assertEquals("${MONGO_URI}", property("application-docker.yml", "spring.mongodb.uri"));
+    }
+
+    @Test
+    @DisplayName("the test profile leaves the MongoDB connection to the test container")
+    void testProfileHasNoMongoUri() throws IOException {
+        Assertions.assertEquals("null", property("application-test.yml", "spring.mongodb.uri"));
+    }
 }

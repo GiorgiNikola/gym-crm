@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.YearMonth;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -21,17 +22,30 @@ public class WorkloadService {
         this.trainerWorkloadRepository = trainerWorkloadRepository;
     }
 
-    public void apply(WorkloadChange change) {
+    public ApplyOutcome apply(WorkloadChange change) {
+        return report(change, trainerWorkloadRepository.update(change.trainerUsername(), change::applyTo));
+    }
+
+    public ApplyOutcome apply(WorkloadChange change, UUID eventId) {
+        WorkloadUpdate update = trainerWorkloadRepository.update(change.trainerUsername(), eventId, change::applyTo);
+        if (update.duplicate()) {
+            log.info("Skipped {} of {} min in {} for trainer {}: event {} was already applied",
+                    change.actionType(), change.trainingDuration(), change.period(), change.trainerUsername(),
+                    eventId);
+            return ApplyOutcome.DUPLICATE;
+        }
+        return report(change, update);
+    }
+
+    private ApplyOutcome report(WorkloadChange change, WorkloadUpdate update) {
         String username = change.trainerUsername();
         YearMonth period = change.period();
         int minutes = change.trainingDuration();
 
-        WorkloadUpdate update = trainerWorkloadRepository.update(username, change::applyTo);
-
         if (!update.stored()) {
             log.warn("Ignored {} of {} min in {} for unknown trainer {}",
                     change.actionType(), minutes, period, username);
-            return;
+            return ApplyOutcome.APPLIED;
         }
 
         long available = update.minutesBefore(period);
@@ -42,6 +56,7 @@ public class WorkloadService {
 
         log.info("Applied {} of {} min in {} for trainer {}, month total is now {} min",
                 change.actionType(), minutes, period, username, update.minutesAfter(period));
+        return ApplyOutcome.APPLIED;
     }
 
     public TrainerWorkload getWorkload(String username) {

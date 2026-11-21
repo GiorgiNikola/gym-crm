@@ -110,14 +110,14 @@ class ApiDocsIntegrationTest {
     }
 
     @Test
-    @DisplayName("the summary documents the trainer status as ACTIVE or INACTIVE")
+    @DisplayName("the summary documents the trainer status as a boolean")
     void documentsTheTrainerStatus() throws Exception {
         String status = "$.components.schemas.TrainerWorkloadResponse.properties.trainerStatus";
 
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath(status + ".enum[0]").value("ACTIVE"))
-                .andExpect(jsonPath(status + ".enum[1]").value("INACTIVE"));
+                .andExpect(jsonPath(status + ".type").value("boolean"))
+                .andExpect(jsonPath(status + ".example").value(true));
     }
 
     @Test

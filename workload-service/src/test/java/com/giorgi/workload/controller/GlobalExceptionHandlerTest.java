@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -73,6 +74,20 @@ class GlobalExceptionHandlerTest {
         String response = result.getResponse().getContentAsString();
         Assertions.assertFalse(response.contains("connection pool exhausted"), response);
         Assertions.assertFalse(response.contains("IllegalStateException"), response);
+    }
+
+    @Test
+    @DisplayName("a version conflict that outlasted the retries becomes a 409 and a warning")
+    void mapsVersionConflictToConflict() throws Exception {
+        mockMvc.perform(get("/version-conflict"))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.detail").value("The workload was changed concurrently, retry the request"));
+
+        Assertions.assertEquals(List.of("Workload change gave up after repeated version conflicts: "
+                + "version 4 of trainer Sarah.Miller is stale"), logs.messages(Level.WARN));
+        Assertions.assertTrue(logs.messages(Level.ERROR).isEmpty());
     }
 
     @Test
@@ -215,6 +230,11 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/unexpected")
         void unexpected() {
             throw new IllegalStateException("connection pool exhausted");
+        }
+
+        @GetMapping("/version-conflict")
+        void versionConflict() {
+            throw new OptimisticLockingFailureException("version 4 of trainer Sarah.Miller is stale");
         }
 
         @GetMapping("/null-pointer")

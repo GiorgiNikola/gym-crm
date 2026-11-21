@@ -8,7 +8,7 @@ import java.util.Optional;
 public record WorkloadChange(String trainerUsername,
                              String trainerFirstName,
                              String trainerLastName,
-                             TrainerStatus trainerStatus,
+                             boolean trainerStatus,
                              LocalDate trainingDate,
                              int trainingDuration,
                              ActionType actionType) {

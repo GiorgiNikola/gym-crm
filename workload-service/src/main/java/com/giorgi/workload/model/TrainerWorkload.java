@@ -9,7 +9,7 @@ import java.util.TreeMap;
 public record TrainerWorkload(String trainerUsername,
                               String trainerFirstName,
                               String trainerLastName,
-                              TrainerStatus trainerStatus,
+                              boolean trainerStatus,
                               List<YearSummary> years) {
 
     public TrainerWorkload {

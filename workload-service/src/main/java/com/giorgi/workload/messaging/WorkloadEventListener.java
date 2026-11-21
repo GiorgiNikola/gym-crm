@@ -2,6 +2,7 @@ package com.giorgi.workload.messaging;
 
 import com.giorgi.workload.config.MessagingConfig;
 import com.giorgi.workload.logging.TransactionIds;
+import com.giorgi.workload.service.ApplyOutcome;
 import com.giorgi.workload.service.WorkloadService;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
@@ -30,7 +31,6 @@ public class WorkloadEventListener {
     private final ServiceTokenVerifier tokenVerifier;
     private final WorkloadEventReader reader;
     private final Validator validator;
-    private final ProcessedEventRegistry processedEvents;
     private final WorkloadService workloadService;
     private final JmsMessagingTemplate deadLetterTemplate;
     private final WorkloadMessagingProperties properties;
@@ -38,14 +38,12 @@ public class WorkloadEventListener {
     public WorkloadEventListener(ServiceTokenVerifier tokenVerifier,
                                  WorkloadEventReader reader,
                                  Validator validator,
-                                 ProcessedEventRegistry processedEvents,
                                  WorkloadService workloadService,
                                  JmsMessagingTemplate deadLetterTemplate,
                                  WorkloadMessagingProperties properties) {
         this.tokenVerifier = tokenVerifier;
         this.reader = reader;
         this.validator = validator;
-        this.processedEvents = processedEvents;
         this.workloadService = workloadService;
         this.deadLetterTemplate = deadLetterTemplate;
         this.properties = properties;
@@ -93,13 +91,8 @@ public class WorkloadEventListener {
 
     private void apply(Delivery delivery) {
         WorkloadEvent event = delivery.event;
-        if (processedEvents.contains(event.eventId())) {
-            log.info("{}", delivery.summary("DUPLICATE"));
-            return;
-        }
-        workloadService.apply(event.toChange());
-        processedEvents.record(event.eventId());
-        log.info("{}", delivery.summary("APPLIED"));
+        ApplyOutcome outcome = workloadService.apply(event.toChange(), event.eventId());
+        log.info("{}", delivery.summary(outcome.name()));
     }
 
     private void forwardToDeadLetterQueue(Delivery delivery, RejectedEventException rejected) {

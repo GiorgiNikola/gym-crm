@@ -1,8 +1,6 @@
 package com.giorgi.workload.config;
 
 import com.giorgi.workload.health.BrokerHealthIndicator;
-import com.giorgi.workload.messaging.InMemoryProcessedEventRegistry;
-import com.giorgi.workload.messaging.ProcessedEventRegistry;
 import com.giorgi.workload.messaging.WorkloadMessagingProperties;
 import jakarta.jms.ConnectionFactory;
 import lombok.extern.slf4j.Slf4j;
@@ -20,8 +18,6 @@ import org.springframework.jms.core.JmsTemplate;
 public class MessagingConfig {
 
     public static final String LISTENER_CONTAINER_FACTORY = "jmsListenerContainerFactory";
-
-    private static final int PROCESSED_EVENT_CAPACITY = 10_000;
 
     @Bean(LISTENER_CONTAINER_FACTORY)
     public DefaultJmsListenerContainerFactory jmsListenerContainerFactory(
@@ -47,11 +43,6 @@ public class MessagingConfig {
     @Bean
     public BrokerHealthIndicator brokerHealthIndicator(JmsListenerEndpointRegistry listenerRegistry) {
         return new BrokerHealthIndicator(listenerRegistry);
-    }
-
-    @Bean
-    public ProcessedEventRegistry processedEventRegistry() {
-        return new InMemoryProcessedEventRegistry(PROCESSED_EVENT_CAPACITY);
     }
 
     private static ConnectionFactory listenerConnectionFactory(ConnectionFactory connectionFactory) {
