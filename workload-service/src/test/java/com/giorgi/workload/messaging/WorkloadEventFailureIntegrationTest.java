@@ -2,6 +2,7 @@ package com.giorgi.workload.messaging;
 
 import ch.qos.logback.classic.Level;
 import com.giorgi.workload.LogCapture;
+import com.giorgi.workload.TestTokens;
 import com.giorgi.workload.config.MessagingConfig;
 import com.giorgi.workload.logging.TransactionIds;
 import com.giorgi.workload.model.WorkloadChange;
@@ -30,6 +31,8 @@ import org.springframework.messaging.MessageHeaders;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -193,6 +196,30 @@ class WorkloadEventFailureIntegrationTest {
         verify(workloadService, times(EmbeddedBrokerTestConfig.MAX_DELIVERY_ATTEMPTS)).apply(forTrainer(username), any());
         Assertions.assertTrue(documents.findByUsername(username).isEmpty());
         assertFailedAttempts(event, EmbeddedBrokerTestConfig.MAX_DELIVERY_ATTEMPTS, "store down");
+    }
+
+    @Test
+    @DisplayName("a dead-lettered event re-driven after its token expired is applied, since it was valid when sent")
+    void appliesRedriveAfterTokenExpiry() throws Exception {
+        String username = TestEvent.newUsername();
+        doThrow(new IllegalStateException("store down")).doThrow(new IllegalStateException("store down"))
+                .doThrow(new IllegalStateException("store down")).doCallRealMethod()
+                .when(workloadService).apply(forTrainer(username), any());
+        Instant sentAt = Instant.now().minus(Duration.ofHours(1));
+        TestEvent event = TestEvent.forTrainer(username).minutes(25)
+                .header(WorkloadEventHeaders.AUTHORIZATION, TestTokens.token().scope(TestTokens.WRITE)
+                        .issuedAt(sentAt).expiresAt(sentAt.plusSeconds(300)).sign())
+                .sendAt(broker, sentAt);
+        Awaitility.await().until(() -> broker.messageCount(EmbeddedBrokerTestConfig.DEAD_LETTER_QUEUE) == 1);
+
+        Assertions.assertEquals(1, broker.retryAll(EmbeddedBrokerTestConfig.DEAD_LETTER_QUEUE));
+
+        Awaitility.await().ignoreExceptions().untilAsserted(() ->
+                Assertions.assertEquals(25, workloadService.getMonthlyDuration(username, 2026, 8)));
+        List<String> lines = listenerLogs.messagesTagged(MDC_KEY, event.transactionId());
+        Assertions.assertEquals(EmbeddedBrokerTestConfig.MAX_DELIVERY_ATTEMPTS + 1, lines.size(), lines.toString());
+        Assertions.assertTrue(lines.getLast().contains(": APPLIED in "), lines.getLast());
+        Assertions.assertEquals(0, broker.messageCount(EmbeddedBrokerTestConfig.DEAD_LETTER_QUEUE));
     }
 
     @Test

@@ -68,7 +68,8 @@ public class WorkloadEventListener {
 
     private void handle(Delivery delivery) {
         try {
-            tokenVerifier.verify(stringHeader(delivery.message, WorkloadEventHeaders.AUTHORIZATION));
+            tokenVerifier.verify(stringHeader(delivery.message, WorkloadEventHeaders.AUTHORIZATION),
+                    delivery.message.getHeaders().get(WorkloadEventHeaders.SENT_AT, Long.class));
             delivery.event = reader.read(delivery.message);
             validate(delivery.event);
         } catch (RejectedEventException rejected) {

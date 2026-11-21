@@ -1,5 +1,7 @@
 package com.giorgi.workload.messaging;
 
+import org.springframework.jms.support.JmsHeaders;
+
 public final class WorkloadEventHeaders {
 
     public static final String TYPE_ID = "eventType";
@@ -10,6 +12,7 @@ public final class WorkloadEventHeaders {
     public static final String AUTHORIZATION = "authorization";
     public static final String GROUP_ID = "JMSXGroupID";
     public static final String DELIVERY_COUNT = "JMSXDeliveryCount";
+    public static final String SENT_AT = JmsHeaders.TIMESTAMP;
 
     public static final String DLQ_REASON = "dlqReason";
     public static final String DLQ_DETAIL = "dlqDetail";

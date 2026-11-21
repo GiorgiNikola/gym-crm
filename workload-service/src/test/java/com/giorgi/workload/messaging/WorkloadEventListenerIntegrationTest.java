@@ -29,6 +29,7 @@ import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -130,7 +131,8 @@ class WorkloadEventListenerIntegrationTest {
                 Arguments.of("a token that is not text", DeadLetterReason.UNAUTHENTICATED,
                         "authorization header is missing",
                         (UnaryOperator<TestEvent>) event -> event.header(WorkloadEventHeaders.AUTHORIZATION, 42)),
-                Arguments.of("an expired token", DeadLetterReason.UNAUTHENTICATED, "Jwt expired at",
+                Arguments.of("a token already expired when it was sent", DeadLetterReason.UNAUTHENTICATED,
+                        "Jwt expired at",
                         (UnaryOperator<TestEvent>) event -> event.header(WorkloadEventHeaders.AUTHORIZATION,
                                 TestTokens.token().scope(TestTokens.WRITE)
                                         .issuedAt(Instant.now().minusSeconds(600))
@@ -183,6 +185,47 @@ class WorkloadEventListenerIntegrationTest {
         Assertions.assertTrue(lines.getFirst().contains(": DEAD_LETTERED " + reason + " ("), lines.getFirst());
         Assertions.assertTrue(lines.getFirst().endsWith(" ms, delivery 1"), lines.getFirst());
         Assertions.assertEquals(List.of(), listenerLogs.messages(Level.ERROR));
+    }
+
+    @Test
+    @DisplayName("a token that was valid when the broker accepted the message is accepted after it expired")
+    void appliesTokenThatExpiredWhileQueued() throws Exception {
+        String username = TestEvent.newUsername();
+        Instant sentAt = Instant.now().minus(Duration.ofHours(1));
+        TestEvent event = TestEvent.forTrainer(username)
+                .header(WorkloadEventHeaders.AUTHORIZATION, TestTokens.token().scope(TestTokens.WRITE)
+                        .issuedAt(sentAt.minusSeconds(1)).expiresAt(sentAt.plusSeconds(300)).sign())
+                .sendAt(broker, sentAt);
+
+        awaitMinutes(username, 60);
+        Assertions.assertTrue(listenerLogs.messagesTagged(MDC_KEY, event.transactionId()).getFirst()
+                .contains(": APPLIED in "));
+    }
+
+    static Stream<Arguments> tokensInvalidAtSendTime() {
+        Instant sentAt = Instant.now().minus(Duration.ofHours(1));
+        return Stream.of(
+                Arguments.of("expired before the send", sentAt, "Jwt expired at",
+                        TestTokens.token().scope(TestTokens.WRITE).issuedAt(sentAt.minusSeconds(600))
+                                .expiresAt(sentAt.minusSeconds(120)).sign()),
+                Arguments.of("a message without a timestamp", Instant.EPOCH, "message timestamp is missing",
+                        TestTokens.token().scope(TestTokens.WRITE).sign()));
+    }
+
+    @ParameterizedTest(name = "{0} is unauthenticated")
+    @MethodSource("tokensInvalidAtSendTime")
+    @DisplayName("a token that was not valid when the broker accepted the message is dead-lettered")
+    void deadLettersTokenInvalidAtSendTime(String description, Instant sentAt, String detail, String token)
+            throws Exception {
+        TestEvent event = TestEvent.forTrainer(TestEvent.newUsername())
+                .header(WorkloadEventHeaders.AUTHORIZATION, token)
+                .sendAt(broker, sentAt);
+
+        MessageHeaders headers = deadLetter().getHeaders();
+        Assertions.assertEquals(DeadLetterReason.UNAUTHENTICATED.name(), headers.get(WorkloadEventHeaders.DLQ_REASON));
+        Assertions.assertTrue(String.valueOf(headers.get(WorkloadEventHeaders.DLQ_DETAIL)).contains(detail),
+                String.valueOf(headers.get(WorkloadEventHeaders.DLQ_DETAIL)));
+        Assertions.assertEquals(event.transactionId(), headers.get(WorkloadEventHeaders.TRANSACTION_ID));
     }
 
     @Test

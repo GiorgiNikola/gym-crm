@@ -38,6 +38,7 @@ public final class TestTokens {
         private String scope;
         private Instant issuedAt = Instant.now();
         private Instant expiresAt = issuedAt.plusSeconds(300);
+        private Instant notBefore;
 
         private Builder() {
         }
@@ -72,12 +73,18 @@ public final class TestTokens {
             return this;
         }
 
+        public Builder notBefore(Instant notBefore) {
+            this.notBefore = notBefore;
+            return this;
+        }
+
         public String sign() {
             JWTClaimsSet claims = new JWTClaimsSet.Builder()
                     .subject(SUBJECT)
                     .issuer(issuer)
                     .audience(audience)
                     .issueTime(Date.from(issuedAt))
+                    .notBeforeTime(notBefore == null ? null : Date.from(notBefore))
                     .expirationTime(expiresAt == null ? null : Date.from(expiresAt))
                     .claim("scope", scope)
                     .build();

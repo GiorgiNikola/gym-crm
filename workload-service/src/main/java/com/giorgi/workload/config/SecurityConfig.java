@@ -11,7 +11,9 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtAudienceValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
@@ -21,12 +23,16 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 
+import java.time.Clock;
+import java.time.Duration;
+
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     public static final String ISSUER = "gym-crm";
     public static final String AUDIENCE = "workload-service";
+    public static final Duration CLOCK_SKEW = Duration.ofSeconds(60);
 
     private static final String[] PUBLIC_PATHS = {
             "/actuator/health",
@@ -35,17 +41,33 @@ public class SecurityConfig {
             "/swagger-ui.html"
     };
 
-    @Bean
-    public JwtDecoder jwtDecoder(WorkloadSecurityProperties properties) {
-        JwtTimestampValidator timestamps = new JwtTimestampValidator();
+    public static JwtTimestampValidator timestampsAt(Clock clock) {
+        JwtTimestampValidator timestamps = new JwtTimestampValidator(CLOCK_SKEW);
         timestamps.setAllowEmptyExpiryClaim(false);
+        timestamps.setClock(clock);
+        return timestamps;
+    }
 
+    public static JwtDecoder serviceTokenDecoderWithoutTimestamps(WorkloadSecurityProperties properties) {
+        return decoder(properties, issuerAndAudience());
+    }
+
+    private static OAuth2TokenValidator<Jwt> issuerAndAudience() {
+        return new DelegatingOAuth2TokenValidator<>(new JwtIssuerValidator(ISSUER), new JwtAudienceValidator(AUDIENCE));
+    }
+
+    private static JwtDecoder decoder(WorkloadSecurityProperties properties, OAuth2TokenValidator<Jwt> validator) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(properties.signingKey())
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-                timestamps, new JwtIssuerValidator(ISSUER), new JwtAudienceValidator(AUDIENCE)));
+        decoder.setJwtValidator(validator);
         return decoder;
+    }
+
+    @Bean
+    public JwtDecoder jwtDecoder(WorkloadSecurityProperties properties) {
+        return decoder(properties, new DelegatingOAuth2TokenValidator<>(
+                timestampsAt(Clock.systemUTC()), issuerAndAudience()));
     }
 
     @Bean

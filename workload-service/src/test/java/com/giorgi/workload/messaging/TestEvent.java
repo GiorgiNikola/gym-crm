@@ -5,6 +5,7 @@ import jakarta.jms.JMSException;
 import jakarta.jms.Message;
 import org.springframework.jms.core.JmsMessagingTemplate;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -99,6 +100,11 @@ public final class TestEvent {
 
     public TestEvent sendTo(JmsMessagingTemplate messaging) {
         messaging.convertAndSend(EmbeddedBrokerTestConfig.QUEUE, text(), headers);
+        return this;
+    }
+
+    public TestEvent sendAt(BrokerProbe broker, Instant sentAt) throws Exception {
+        broker.send(EmbeddedBrokerTestConfig.QUEUE, text(), headers, sentAt);
         return this;
     }
 }

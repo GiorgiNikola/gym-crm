@@ -643,7 +643,7 @@ Tests on each side check them, so a change to one side that the other cannot rea
 |---|---|---|
 | `APPLIED` | valid event with a valid token | the change is stored, the eventId is recorded and the session commits (ack) |
 | `DUPLICATE` | an eventId already processed | logged at INFO and acknowledged; the stored totals do not change |
-| `DEAD_LETTERED UNAUTHENTICATED` | `authorization` missing, expired, tampered, wrong issuer or audience | forwarded to `DLQ.trainer.workload` on delivery 1, never redelivered |
+| `DEAD_LETTERED UNAUTHENTICATED` | `authorization` missing, tampered, wrong issuer or audience, or expired when the message was sent; no message timestamp | forwarded to `DLQ.trainer.workload` on delivery 1, never redelivered |
 | `DEAD_LETTERED FORBIDDEN` | valid token without `workload:write` | same |
 | `DEAD_LETTERED MALFORMED` | not text, wrong `eventType` or `eventVersion`, empty body, unreadable JSON | same |
 | `DEAD_LETTERED INVALID` | readable JSON failing validation (missing field, non-positive duration) | same; `dlqDetail` lists the violations |
@@ -658,6 +658,28 @@ The publisher retries only on `JmsException`. A conversion failure is a bug, and
 The timeouts live in the broker URL (`connect-timeout-millis=1000&callTimeout=1000`).
 `useTopologyForLoadBalancing=false` stops the client trying the topology connector and then the static one
 with a 2 s pause between them; with that pause, a request took 6.5 s to fail.
+
+### Token lifetime and queued messages
+
+The service token in `authorization` lives five minutes, but a message can wait much longer: while
+workload-service is down, or in the DLQ until someone re-drives it. The listener therefore asks whether
+the token was valid when the broker accepted the message, not whether it is valid now.
+`ServiceTokenVerifier` checks the signature, `iss`, `aud` and the `workload:write` scope as before. It then
+checks `exp` and `nbf` against the message's JMS timestamp (`jms_timestamp`), with the same 60 s skew as
+the REST API, and requires an `exp`. A message without a timestamp (absent or 0) is `UNAUTHENTICATED`
+(`message timestamp is missing, so the token cannot be checked`). A token that had already expired when it
+was sent is still `UNAUTHENTICATED`, and the detail names both times
+(`Jwt expired at ..., message sent at ...`). `iat` is not checked, as on the REST path. Spring fills a
+missing `iat` from `exp`, so a check on it would reject tokens that never carried one.
+
+The JMS producer stamps the timestamp on send. The broker keeps it when it dead-letters a message after 3
+failed deliveries and when `retryMessage` moves it back, so a re-drive is checked against the original send.
+A copy that the listener itself forwards to the DLQ is a new message with a new timestamp. Those messages
+were rejected as invalid, so re-driving them does not help anyway. Tests:
+`appliesTokenThatExpiredWhileQueued`, `deadLettersTokenInvalidAtSendTime` (expired before the send, and no
+timestamp), `appliesRedriveAfterTokenExpiry` (DLQ, then `retryMessages()` an hour after the token expired),
+and `ServiceTokenVerifierTest` for the skew and `nbf`. The tests send with a chosen timestamp through the
+Artemis core client, because the JMS producer always stamps the current time.
 
 ### Acknowledgement and transactions
 
@@ -1275,7 +1297,7 @@ From a fresh `clean verify` of each service. Each pom has a JaCoCo check that fa
 | Service | Tests | Line coverage | Branch coverage | Excluded from coverage |
 |---|---|---|---|---|
 | gym-crm | 629 | 100% (1123/1123) | 100% (170/170) | `GymCrmApplication` |
-| workload-service | 313 | 100% (558/558) | 100% (118/118) | `WorkloadServiceApplication` |
+| workload-service | 325 | 100% (575/575) | 100% (124/124) | `WorkloadServiceApplication` |
 | discovery-server | 2 | nothing to measure | nothing to measure | `DiscoveryServerApplication`, its only class |
 
 Two tests worth knowing in the workload path:
@@ -1373,12 +1395,14 @@ ID=270936
 docker exec artemis sh -c 'curl -s -u "$ARTEMIS_USER:$ARTEMIS_PASSWORD" -H "Origin: http://localhost" -H "Content-Type: application/json" -d "{\"type\":\"exec\",\"mbean\":\"org.apache.activemq.artemis:broker=\\\"0.0.0.0\\\",component=addresses,address=\\\"DLQ.trainer.workload\\\",subcomponent=queues,routing-type=\\\"anycast\\\",queue=\\\"DLQ.trainer.workload\\\"\",\"operation\":\"retryMessage(long)\",\"arguments\":[$1]}" http://localhost:8161/console/jolokia/' sh "$ID"
 ```
 
-Checked live: the re-driven event was `APPLIED` on delivery 1, and the month went from 65 to 80. Two
-catches. First, the message still carries its five-minute service token: a re-drive after that is
-dead-lettered again as `UNAUTHENTICATED` (`Jwt expired at ...`), and such a change has to be repeated
-through gym-crm. Second, `retryMessages()` also re-drives the invalid messages, which simply land in the
-DLQ again. Re-driving an event that was already applied is harmless, because its id is in the
-document (within the 100-id window).
+Checked live: the re-driven event was `APPLIED` on delivery 1, and the month went from 65 to 80. A
+re-drive also works after the five-minute service token has expired, because the token is checked against
+the time the message was sent (see Messaging, Token lifetime and queued messages). Checked live as well:
+an event sent at 21:24:47 with a token valid until 21:29:47 was dead-lettered during a MongoDB outage,
+re-driven at 21:31:32, and `APPLIED`. The broker had kept the original timestamp, and the month went from
+80 to 115. Before that fix, such a re-drive was dead-lettered again as `UNAUTHENTICATED` (`Jwt expired at ...`).
+`retryMessages()` also re-drives the invalid messages, which simply land in the DLQ again. Re-driving an
+event that was already applied is harmless, because its id is in the document (within the 100-id window).
 
 The Mongo passwords go into `MONGO_URI` unencoded, so they must be URL-safe. Use hex (`openssl rand -hex 24`).
 A password with `@`, `:`, `/` or `%` breaks the URI. Percent-encoding the value in the env file would also
@@ -1388,7 +1412,7 @@ There is no outbox. A change is published after commit, and if the broker stays 
 
 Idempotency covers the last 100 events per trainer. A duplicate older than that would be applied again. Redeliveries and producer retries arrive within seconds, far inside that window.
 
-A message the broker dead-letters after 3 failed deliveries keeps all its properties, including the service token. The token lives five minutes, has only `workload:write`, and the console that shows it is bound to 127.0.0.1. The broker's AMQ222149 log line, which would print it, is filtered out. Messages the listener forwards to the DLQ carry the original properties as well.
+A message the broker dead-letters after 3 failed deliveries keeps all its properties, including the service token. The token has only `workload:write`, and the console that shows it is bound to 127.0.0.1. The broker's AMQ222149 log line, which would print it, is filtered out. Messages the listener forwards to the DLQ carry the original properties as well. Since tokens on messages are checked against the message's JMS timestamp, the five-minute lifetime no longer limits a copied token on the queue path. A client with broker credentials can set any timestamp through the Artemis core API, so it could send an old token with a matching old timestamp. The broker credentials are the real barrier, and the REST path still checks expiry against the current time.
 
 There is no endpoint to delete a single training, by design. Trainings disappear only with their trainee, which is why every delete sends one `DELETE` per training.
 
