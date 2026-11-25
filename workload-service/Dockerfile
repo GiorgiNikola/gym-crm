@@ -18,6 +18,10 @@ RUN mv target/*.jar app.jar \
 FROM eclipse-temurin:21.0.12.1_1-jre
 WORKDIR /app
 
+# Never remember a failed DNS lookup: after a restart of the broker (or any peer) the JVM would otherwise keep
+# answering "unknown host" for 10 seconds. A security property, so a system property cannot override it.
+RUN printf 'networkaddress.cache.negative.ttl=0\n' > /opt/dns.security
+
 RUN groupadd --system workload && useradd --system --gid workload --home-dir /app workload \
  && mkdir -p /app/logs && chown -R workload:workload /app
 USER workload
@@ -41,4 +45,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD ["curl", "-fsS", "http://localhost:8081/actuator/health"]
 
 # Exec form so java is PID 1 and gets SIGTERM on docker stop
-ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
+ENTRYPOINT ["java", "-Djava.security.properties=/opt/dns.security", "org.springframework.boot.loader.launch.JarLauncher"]
