@@ -1,6 +1,6 @@
 # Gym CRM
 
-Trainees and trainers register, log in, manage their profiles, pick trainers and log trainings, all over HTTP. Data is stored in PostgreSQL. Spring Boot application with four environment profiles plus a standalone one for Docker, Flyway migrations, actuator health and Prometheus metrics, Swagger UI, and Spring Security with JWT bearer tokens. Since the Microservices module it is one of three services. Since the Messaging module it sends trainer workload changes to the second service through an ActiveMQ Artemis queue and reads the totals back over REST, finding that service through Eureka. Since the NoSQL module that service keeps the totals in MongoDB.
+Trainees and trainers register, log in, manage their profiles, pick trainers and log trainings, all over HTTP. Data is stored in PostgreSQL. Spring Boot application with four environment profiles plus a standalone one for Docker, Flyway migrations, actuator health and Prometheus metrics, Swagger UI, and Spring Security with JWT bearer tokens. Since the Microservices module it is one of three services. Since the Messaging module it sends trainer workload changes to the second service through an ActiveMQ Artemis queue and reads the totals back over REST, finding that service through Eureka. Since the NoSQL module that service keeps the totals in MongoDB. Since the Testing module both services have Cucumber component tests, and a separate `integration-tests` module runs Cucumber scenarios against the real images.
 
 ## Architecture
 
@@ -53,9 +53,13 @@ Java 21 and Spring Boot 4.0.8, Spring Cloud 2025.1.3 for Eureka, the load balanc
 | H2 (tests only) | 2.4.240 |
 | Spring Data MongoDB | 5.0.7 |
 | MongoDB Java driver | 5.6.5 |
-| Testcontainers (workload-service tests) | 2.0.5 |
+| Testcontainers (workload-service tests, integration-tests) | 2.0.5 |
+| Cucumber (not managed by Boot) | 8.1.0 |
+| JUnit Platform | 6.0.3 |
+| WireMock (gym-crm tests, not managed by Boot) | 3.13.2 |
+| Awaitility | 4.3.0 |
 
-Plus Hibernate Validator, Lombok, JUnit 5, Mockito and JaCoCo.
+Plus Hibernate Validator, Lombok, JUnit Jupiter 6, Mockito, AssertJ and JaCoCo.
 
 ## Getting it running
 
@@ -1292,13 +1296,26 @@ Passwords are 10 random characters from an alphabet that leaves out `I`, `O`, `l
 
 ## Testing
 
-From a fresh `clean verify` of each service. Each pom has a JaCoCo check that fails the build below 80% line coverage. The workload-service suite runs MongoDB in Testcontainers, so it needs Docker running:
+Three levels. Counts are from a fresh `clean verify` of each service and one run of the integration module:
 
-| Service | Tests | Line coverage | Branch coverage | Excluded from coverage |
+| Level | gym-crm | workload-service | Runs in | What is real, what is stubbed |
 |---|---|---|---|---|
-| gym-crm | 629 | 100% (1123/1123) | 100% (170/170) | `GymCrmApplication` |
-| workload-service | 325 | 100% (575/575) | 100% (124/124) | `WorkloadServiceApplication` |
+| Unit and Spring slice/context tests (JUnit) | 630 | 325 | each service's `verify` | Mockito for collaborators; H2, embedded Artemis, Testcontainers MongoDB where a test needs them |
+| Component (Cucumber) | 25 | 28 | each service's `verify` | the whole service with its own storage; the other service stubbed |
+| Integration (Cucumber) | 9, for the whole system | | `./mvnw -f integration-tests/pom.xml verify` | nothing: the real images from `compose.yml` |
+| discovery-server | 2 JUnit | | its own `verify` | |
+
+| Service | Tests in `verify` | Line coverage | Branch coverage | Excluded from coverage |
+|---|---|---|---|---|
+| gym-crm | 655 | 100% (1123/1123) | 100% (170/170) | `GymCrmApplication` |
+| workload-service | 353 | 100% (575/575) | 100% (124/124) | `WorkloadServiceApplication` |
 | discovery-server | 2 | nothing to measure | nothing to measure | `DiscoveryServerApplication`, its only class |
+
+Each pom has a JaCoCo check that fails the build below 80% line coverage. The component tests count toward
+coverage because they run in the same `verify`. workload-service needs Docker running for its Testcontainers
+MongoDB; gym-crm's `verify` needs no Docker.
+
+### Unit and context tests
 
 Two tests worth knowing in the workload path:
 
@@ -1322,6 +1339,206 @@ Two tests worth knowing in the workload path:
 - `ActuatorIntegrationTest` reads `/actuator/health` and `/actuator/prometheus`, `ApiDocsIntegrationTest` reads the generated spec and the UI page, and `ApiDocsDisabledIntegrationTest` checks both return 404 with the two springdoc flags off.
 
 The suite passes in normal order and in reverse alphabetical order (`-Dsurefire.runOrder=reversealphabetical`), so no test depends on another one running first.
+
+### Cucumber setup
+
+Cucumber 8.1.0 in all three modules, from `cucumber-bom`. 8.x is the line built for JUnit 6 and runs on the
+JUnit Platform 6.0.3 that Boot 4 manages. Each module has `cucumber-java`, `cucumber-junit-platform-engine` and
+`junit-platform-suite`. The services add `cucumber-spring`, the integration module `cucumber-picocontainer`.
+
+One `@Suite` class per module is the runner: `WorkloadComponentTest`, `GymCrmComponentTest` and
+`GymCrmIntegrationIT`. Each has `@IncludeEngines("cucumber")`, `@SelectClasspathResource` on its feature
+folder, `@IncludeTags` on `component` or `integration`, the glue package, and the `pretty`, `html` and `json`
+plugins. Surefire (failsafe in the integration module) hands each test class to the JUnit Platform:
+- Jupiter runs the JUnit classes as before;
+- the suite engine runs the `@Suite` class and passes its feature folder to Cucumber, one test per scenario.
+
+Cucumber never discovers the features on its own, so no scenario runs twice.
+
+In the services, one `@CucumberContextConfiguration` class starts `@SpringBootTest` on a random port with the
+same storage the other tests use. Scenario state is a `@ScenarioScope` bean. Awaitility polls on the scenario
+thread (`pollInSameThread`), because scenario-scoped beans are not visible from other threads.
+
+Reports:
+
+| Module | Report |
+|---|---|
+| gym-crm | `target/cucumber-reports/gym-crm-component.html` and `.json` |
+| workload-service | `workload-service/target/cucumber-reports/workload-component.html` and `.json` |
+| integration-tests | `integration-tests/target/cucumber-reports/integration.html` and `.json` |
+
+### BDD conventions
+
+- Business language only. No URLs, JSON, class names or status codes in a feature file. Dates read like
+  `4 August 2026`, months like `August 2026`. Custom parameter types and `@DataTableType`s turn them into
+  `LocalDate`, `YearMonth` and table rows.
+- Given, When, Then, one behaviour per scenario. A Scenario Outline only where the rows are the same behaviour
+  with different data.
+- Tags: `@component` or `@integration` on the feature, `@positive` or `@negative` on every scenario.
+- Isolation. Every scenario registers its own users. A random six-letter suffix on the last name keeps the
+  username `first.last` and keeps one scenario's login lock from meeting another. Before each scenario:
+  - workload-service clears the trainer collection and drains both queues;
+  - gym-crm drains the queue, resets WireMock and the circuit breaker, and clears its tables afterwards.
+- Async outcomes are awaited with Awaitility, never with a sleep. The one real wait is the gym-crm scenario
+  where workload-service answers after the 3 s read timeout.
+- Steps stay thin: HTTP and broker helpers do the work, and AssertJ asserts.
+
+### Component boundaries
+
+A component test drives one service only through its public interfaces, with its own real storage. Eureka is
+off.
+
+**workload-service.** The test plays gym-crm on the queue. It sends events to the embedded Artemis with
+`TestEvent` and `BrokerProbe`, the same helpers the JUnit tests use. It reads the results over the REST API with
+tokens from `TestTokens`. Storage is the Testcontainers MongoDB. A `MongoTemplate` spy fails one save for the
+storage scenario.
+
+**gym-crm.** workload-service's REST API is a WireMock server. The real `@LoadBalanced` client stays in place:
+the test registers WireMock as `spring.cloud.discovery.client.simple.instances.workload-service[0].uri`, so the
+load balancer, the circuit breaker, the service-token interceptor and the transaction-id interceptor all run as
+in production. One scenario decodes the token WireMock received (issuer, audience, `workload:read`) and checks
+the transaction id and that the JDK HTTP client sent it. Published events are read from the embedded Artemis
+queue. A `JmsMessagingTemplate` spy stands in for an unreachable broker. Storage is the test H2 with Flyway.
+
+### Integration module
+
+`integration-tests/` is a sibling Maven module with no service code. Its versions come from the
+`spring-boot-dependencies` and `cucumber-bom` BOMs. It uses:
+- Cucumber with PicoContainer;
+- Testcontainers' `ComposeContainer`;
+- AssertJ and Awaitility;
+- Jackson for JSON;
+- the Artemis JMS client, only for the scenario that puts a raw message on the queue.
+
+The JDK `HttpClient` talks to gym-crm.
+
+```bash
+./mvnw -f integration-tests/pom.xml verify
+```
+
+It needs Docker with `docker compose` 2.24 or later, and fails at once with "Docker is not running ..." when
+Docker is down (checked with OrbStack stopped). A run takes about 95 to 115 seconds once the Docker build cache
+is warm; the first run, which builds the three images from scratch, took about 7 minutes.
+
+- **Compose override with fake secrets.** `integration-tests/compose.integration.yml` is layered on the root
+  `compose.yml`. Builds, healthchecks, commands and mounted config are reused unchanged. With `!reset` and
+  `!override` it changes only what would collide with a developer's stack or needs the real `.env` files:
+  - container, network, volume and image names become project scoped;
+  - host ports become random loopback ports, for gym-crm 8080, workload-service 8081 and Artemis 61616 only;
+  - every secret is a fake value kept in that file.
+- **Merged config.** Testcontainers reads the compose files itself and refuses `container_name`, even when the
+  override resets it. So the suite first runs `docker compose config` on the two files and starts the merged
+  model it writes to `target/compose.integration.rendered.yml`.
+- **Built images.** Each Dockerfile builds its own jar in a builder stage, so nothing is packaged on the host.
+  `up --build` builds the images, and `down --rmi local -v` removes them and the volumes at the end. The base
+  images the Dockerfiles build from stay as build cache.
+- **Separate project name.** `gymcrm-it` plus a random suffix. The developer's `gym-crm`, `workload-service` and
+  `discovery-server` images, the `gymcrm-*` volumes and the `gymcrm-net` network are never touched.
+- **Outages.** Steps stop and start containers through the Testcontainers Docker client. An `@After` hook starts
+  again every service a scenario stopped, also when the scenario failed. It waits for a passing health check that
+  ran after the restart. Every cross-service outcome is awaited with Awaitility.
+- **Diagnostics.** Each container's output is written to `integration-tests/target/container-logs/<service>.log`.
+
+### Scenarios
+
+workload-service, `workload-events.feature` (9 positive):
+- The first training creates the trainer's month.
+- A second training in the same month adds up.
+- Trainings in a new month and a new year are kept apart.
+- A cancelled training reduces the month but never below zero (Outline: 45 → 15, 60 → 0, 90 → 0).
+- An inactive trainer is stored as inactive.
+- The same event delivered twice is counted once.
+- A training is still counted when the storage fails on the first delivery (the spy sees a failed save, then a
+  successful one, and the total is 90).
+
+workload-service, `rejected-workload-events.feature` (9 negative). Each one checks that the event is
+dead-lettered with the right reason and that nothing is stored:
+- Without valid credentials (Outline: no token, expired token → unauthenticated; read-only token → forbidden).
+- Cannot be read, so malformed (Outline: unreadable body, unknown event type, unsupported version, training date
+  in month 13).
+- Invalid training details (Outline: blank trainer username, negative duration).
+
+workload-service, `workload-read.feature` (3 positive, 7 negative):
+- The monthly total of a trainer.
+- A month without trainings has no training time.
+- The full summary of a trainer.
+- An unknown trainer is not found (Outline: monthly, summary).
+- A request without a token is rejected (Outline: monthly, summary).
+- A token that may only record workloads cannot read them (Outline: monthly, summary).
+- A month outside the calendar is rejected.
+
+gym-crm, `accounts.feature` (2 positive, 8 negative):
+- A new trainee or trainer registers and logs in with the issued credentials (Outline).
+- A wrong password is rejected.
+- Three failed logins lock the account.
+- A registration with missing or invalid details is rejected and creates no account (Outline: no first name, no
+  last name, first name over 50 characters, birth date in the future, no specialization, unknown specialization).
+
+gym-crm, `training-workload-events.feature` (2 positive, 4 negative):
+- Adding a training announces it once: one ADD event with the trainer, date, minutes and the request's
+  transaction id.
+- Deleting a trainee withdraws each of their trainings, with one DELETE per training.
+- A training with an unknown trainer is rejected and announces nothing.
+- A training lasting zero minutes is rejected and announces nothing.
+- A trainee cannot log a training for someone else.
+- A training is still saved while the message broker is down.
+
+gym-crm, `trainer-workload.feature` (2 positive, 7 negative):
+- The trainer sees the minutes the workload service reports. The call carried gym-crm's read token and the
+  transaction id.
+- A trainer the workload service does not know yet has no minutes.
+- The trainer is told the workload is temporarily unavailable when the workload service is down, drops the
+  connection, fails with a server error, or answers too slowly (Outline).
+- Repeated failures stop the calls to the workload service: 6 asks, 5 calls reach WireMock.
+- Only the trainer can read their own workload (Outline: another trainee, another trainer; WireMock is not
+  called).
+
+integration-tests, `trainer-workload.feature` (5 positive):
+- A logged training shows up as the trainer's minutes in that month.
+- Two trainings in one month add up.
+- Trainings in different months stay separate.
+- Deleting the trainee removes the trainer's minutes.
+- The trainer's workload is still there after the workload service restarts.
+
+integration-tests, `outages.feature` (4 negative):
+- A training logged while the workload service is down is counted once it is back.
+- The trainer is told the workload is temporarily unavailable while the workload service is down.
+- An untrusted event put straight on the queue, with a forged token, is set aside as unauthenticated and changes
+  no workload.
+- A training logged while messaging is down is saved without keeping the trainee waiting, in under 10 s. The
+  scenario states the known limitation that this change is never delivered.
+
+### Problems these tests found
+
+- **Apache HttpClient retried 429 and 503 in tests.** Apache HttpClient 5 comes with the Eureka client, and
+  Spring picks it as the default for any `RestClient` without a factory. Its retry strategy waits out
+  `Retry-After` and resends. The lockout scenario took five minutes and then logged in successfully; the breaker
+  scenario counted retries as calls.
+
+  Fix: the component test client uses `JdkClientHttpRequestFactory`. The production workload client already set
+  the JDK client explicitly. `WorkloadClientTest` and the WireMock scenario now prove it by the `User-Agent`
+  (`Java-http-client/...`). A connection reset is retried once by the JDK client too, so "the workload service is
+  down" is modelled as a 503 and "drops the connection" is its own outline row.
+- **Stale health after a restart.** Right after `docker start`, Docker still reports the previous run's
+  `healthy`. During the start period, failing checks do not change that status. So the restore hook returned
+  before Artemis was back, and the next scenario's event was lost.
+
+  Fix: a service counts as healthy again only after a passing check that ran after its new `StartedAt`.
+- **DNS negative cache.** While Artemis was down, gym-crm's failed lookups of the host name `artemis` were cached
+  by the JVM for 10 s (`networkaddress.cache.negative.ttl` in the JDK's `java.security`). Even with the broker
+  healthy, gym-crm could not reach it for up to 10 s, and every event in that window was lost.
+
+  Checked inside the runtime image `eclipse-temurin:21.0.12.1_1-jre`:
+
+  | Setting | Effective negative TTL |
+  |---|---|
+  | none | 10 s |
+  | `-Dsun.net.inetaddr.negative.ttl=0` | still 10 s (the security property wins) |
+  | `-Djava.security.properties` with `networkaddress.cache.negative.ttl=0` | 0 |
+
+  Fix: the gym-crm and workload-service Dockerfiles write that override file and pass it in the `ENTRYPOINT`.
+  The temporary hook wait for broker reachability was removed. Checked live in the integration run: Artemis
+  healthy again at 20:57:24.553, gym-crm's next event published at 20:57:24.698 on its first attempt.
 
 ## What the Spring Boot module added
 
@@ -1373,6 +1590,16 @@ The suite passes in normal order and in reverse alphabetical order (`-Dsurefire.
 - A `mongo` compose service with a volume, a healthcheck, an init script for a least-privilege app user,
   and separate root and app env files. Tests run on Testcontainers MongoDB.
 
+## What the Testing module added
+
+- Cucumber component tests in each service, run by the normal `verify` and counted by JaCoCo. workload-service
+  is driven over its queue and REST API. gym-crm is driven over HTTP, with WireMock behind the real load-balanced
+  client.
+- `integration-tests/`: Cucumber scenarios against the real images. A compose override with fake secrets, a
+  separate project name, and outage scenarios that stop and restore containers.
+- The JVM no longer caches failed DNS lookups in the gym-crm and workload-service images.
+- Proof that the workload client uses the JDK HTTP client although Apache HttpClient is on the classpath.
+
 ## Known limitations
 
 A long MongoDB outage ends in the DLQ. Each delivery waits out the 2 s server selection timeout, and
@@ -1408,7 +1635,9 @@ The Mongo passwords go into `MONGO_URI` unencoded, so they must be URL-safe. Use
 A password with `@`, `:`, `/` or `%` breaks the URI. Percent-encoding the value in the env file would also
 break the init script, which reads the same variable as the literal password.
 
-There is no outbox. A change is published after commit, and if the broker stays unreachable through the 3 s retry budget it is lost: the ERROR line is the only record, and nothing reconciles the two stores. A transactional outbox would close that gap.
+There is no outbox. A change is published after commit, and if the broker stays unreachable through the 3 s retry budget it is lost: the ERROR line is the only record, and nothing reconciles the two stores. A transactional outbox would close that gap. The integration scenario "A training logged while messaging is down" shows it: the training is saved and the trainee waits under 10 s, but the trainer's minutes never include it.
+
+In the integration module, a container's log file stops when the container is stopped. Output after a restart is missing from `target/container-logs/`. `docker logs` would still have it, but the suite removes the containers at the end.
 
 Idempotency covers the last 100 events per trainer. A duplicate older than that would be applied again. Redeliveries and producer retries arrive within seconds, far inside that window.
 
