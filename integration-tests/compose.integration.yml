@@ -1,0 +1,80 @@
+# Layered on the root compose.yml by the integration suite: docker compose -f compose.yml -f this file.
+# Images, builds, healthchecks, commands and mounted config come from compose.yml unchanged. This file only
+# replaces what would collide with a developer's own stack (fixed container, network, volume and image names,
+# host ports) and what would need the real .env files. Every secret here is fake and used only by this suite.
+
+x-fake-broker: &fake-broker
+  ARTEMIS_USER: integration
+  ARTEMIS_PASSWORD: integration-only-artemis-password
+
+x-fake-mongo-app: &fake-mongo-app
+  MONGO_APP_DATABASE: workload
+  MONGO_APP_USERNAME: workload
+  MONGO_APP_PASSWORD: integration0only0mongo0app0password
+
+x-fake-workload-secret: &fake-workload-secret
+  WORKLOAD_JWT_SECRET: integration-only-workload-secret-0123456789abcdef
+
+services:
+  db:
+    container_name: !reset null
+    env_file: !reset []
+    environment:
+      POSTGRES_DB: gymcrm
+      POSTGRES_USER: gymcrm
+      POSTGRES_PASSWORD: integration-only-db-password
+
+  artemis:
+    container_name: !reset null
+    env_file: !reset []
+    environment: *fake-broker
+    # Only the core port, for the scenario that puts a raw message on the queue; no web console.
+    ports: !override
+      - "127.0.0.1::61616"
+
+  mongo:
+    container_name: !reset null
+    env_file: !reset []
+    environment:
+      <<: *fake-mongo-app
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: integration-only-mongo-root-password
+
+  discovery-server:
+    container_name: !reset null
+    image: !reset null
+    ports: !reset []
+
+  workload-service:
+    container_name: !reset null
+    image: !reset null
+    env_file: !reset []
+    environment:
+      <<: [*fake-broker, *fake-mongo-app, *fake-workload-secret]
+    ports: !override
+      - "127.0.0.1::8081"
+
+  app:
+    container_name: !reset null
+    image: !reset null
+    env_file: !reset []
+    environment:
+      <<: [*fake-broker, *fake-workload-secret]
+      DB_URL: jdbc:postgresql://db:5432/gymcrm
+      DB_USERNAME: gymcrm
+      DB_PASSWORD: integration-only-db-password
+      JWT_SECRET: integration-only-user-jwt-secret-0123456789abcdef
+    ports: !override
+      - "127.0.0.1::8080"
+
+networks:
+  gymcrm-net:
+    name: !reset null
+
+volumes:
+  gymcrm-pgdata:
+    name: !reset null
+  gymcrm-artemis-data:
+    name: !reset null
+  gymcrm-mongo-data:
+    name: !reset null

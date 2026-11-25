@@ -24,6 +24,7 @@ mvnw
 mvnw.cmd
 .mvn/
 
-# Sibling services build their own images from their own folders.
+# Sibling services build their own images from their own folders; the integration suite is no service.
 discovery-server/
 workload-service/
+integration-tests/

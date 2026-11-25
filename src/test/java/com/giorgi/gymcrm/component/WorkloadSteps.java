@@ -99,6 +99,7 @@ public class WorkloadSteps {
         assertThat(reads).hasSize(1);
         assertThat(reads.getFirst().getHeader(TransactionIdFilter.TRANSACTION_ID_HEADER))
                 .isEqualTo(state.response().transactionId());
+        assertThat(reads.getFirst().getHeader(HttpHeaders.USER_AGENT)).startsWith("Java-http-client/");
         Claims token = serviceToken(reads.getFirst().getHeader(HttpHeaders.AUTHORIZATION));
         assertThat(token.getIssuer()).isEqualTo("gym-crm");
         assertThat(token.getAudience()).containsExactly("workload-service");

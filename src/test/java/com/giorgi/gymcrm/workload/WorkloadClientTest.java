@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
+import org.springframework.util.ClassUtils;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -66,6 +67,7 @@ class WorkloadClientTest {
         received.put("method", exchange.getRequestMethod());
         received.put("path", exchange.getRequestURI().getPath());
         received.put("authorization", String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
+        received.put("userAgent", String.valueOf(exchange.getRequestHeaders().getFirst("User-Agent")));
 
         if (exchange.getRequestURI().getPath().startsWith("/workloads/Slow.Trainer/")) {
             awaitRelease();
@@ -95,6 +97,16 @@ class WorkloadClientTest {
         Assertions.assertEquals("GET", received.get("method"));
         Assertions.assertEquals("/workloads/Sarah.Miller/2026/8", received.get("path"));
         Assertions.assertEquals("Bearer " + tokens.readToken(), received.get("authorization"));
+    }
+
+    @Test
+    @DisplayName("the JDK HTTP client sends the call, although Apache HttpClient is on the classpath")
+    void usesTheJdkClient() {
+        Assertions.assertTrue(ClassUtils.isPresent("org.apache.hc.client5.http.impl.classic.HttpClients", null));
+
+        client.getMonthlyWorkload("Sarah.Miller", 2026, 8);
+
+        Assertions.assertTrue(received.get("userAgent").startsWith("Java-http-client/"), received.get("userAgent"));
     }
 
     @Test
